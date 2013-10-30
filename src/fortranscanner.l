@@ -64,6 +64,9 @@
 #include "fortrancode.h"
 #include "pre.h"
 #include "arguments.h"
+#include <iostream>
+
+using namespace std;
 
 // Toggle for some debugging info
 //#define DBG_CTX(x) fprintf x
@@ -187,7 +190,7 @@ static InterfaceType     ifType = IF_NONE;
 static bool              functionLine = FALSE;
 
 static char              stringStartSymbol; // single or double quote
-static bool 		 parsingPrototype = FALSE; // see parsePrototype()
+static bool              parsingPrototype = FALSE; // see parsePrototype()
 
 //! Accumulated modifiers of current statement, eg variable declaration.
 static SymbolModifiers currentModifiers;
@@ -311,9 +314,9 @@ SCOPENAME ({ID}{BS}"::"{BS})*
 %x      BlockData
 
 /** prototype parsing */
-%x  	Prototype
-%x  	PrototypeSubprog
-%x	PrototypeArgs
+%x      Prototype
+%x      PrototypeSubprog
+%x      PrototypeArgs
 
 %%
 
@@ -567,7 +570,7 @@ SCOPENAME ({ID}{BS}"::"{BS})*
 
  /*------- type definition  -------------------------------------------------------------------------------*/
 
-<Start,ModuleBody>^{BS}type/[^a-z0-9]    {
+<Start,ModuleBody>^{BS}type/[^a-z0-9]   {
                                           if(YY_START == Start)
                                           {
                                             addModule(NULL); 
@@ -616,7 +619,6 @@ private                                 {
                                           {
                                             current->name = current_root->name + "::" + current->name;
                                           }
-
                                           addCurrentEntry(1);
                                           startScope(last_entry); 
                                           BEGIN(TypedefBody);
@@ -648,6 +650,15 @@ private                                 {
                                           current->name     = name;
                                           current->fileName = yyFileName;
                                           current->bodyLine = yyLineNr;
+
+                                          /* if type is part of a module, mod name is necessary for output */
+                                          if ((current_root) && 
+                                              (current_root->section == Entry::CLASS_SEC
+                                               || current_root->section == Entry::NAMESPACE_SEC))
+                                          {
+                                            current->name = current_root->name + "::" + current->name;
+                                          }
+                                          //cout << "Module Procedure " << current->name << endl;
                                           addCurrentEntry(1);
                                         }
 {BS}"=>"[^(\n|\!)]*                     { /* Specific bindings come after the ID. */
@@ -738,7 +749,7 @@ private                                 {
   				       }
 {ID}	                               {
                                        }  
-^{BS}"type"{BS_}"is"/{BS_}             { }
+^{BS}"type"{BS_}"is"/{BS_}                    { }
 }
 <AttributeList>{
 {COMMA}					{}
@@ -1109,21 +1120,21 @@ private                                 {
   					}
 
  /*-----Prototype parsing -------------------------------------------------------------------------*/
-<Prototype>{BS}{SUBPROG}{BS_}		{
-					  BEGIN(PrototypeSubprog);
-					}
-<Prototype,PrototypeSubprog>{BS}{SCOPENAME}?{BS}{ID} { 
-					  current->name = QCString(yytext).lower();
-					  current->name.stripWhiteSpace();
-					  BEGIN(PrototypeArgs);
-					}
+<Prototype>{BS}{SUBPROG}{BS_}           {
+                                          BEGIN(PrototypeSubprog);
+                                        }
+<Prototype,PrototypeSubprog>{BS}{SCOPENAME}?{BS}{ID} {
+                                          current->name = QCString(yytext).lower();
+                                          current->name.stripWhiteSpace();
+                                          BEGIN(PrototypeArgs);
+                                        }
 <PrototypeArgs>{
-"("|")"|","|{BS_}			{ current->args += yytext; }
-{ID}					{ current->args += yytext; 
-					  Argument *a = new Argument;
-					  a->name = QCString(yytext).lower();
-					  current->argList->append(a);
-					}
+"("|")"|","|{BS_}                       { current->args += yytext; }
+{ID}                                    { current->args += yytext;
+                                          Argument *a = new Argument;
+                                          a->name = QCString(yytext).lower();
+                                          current->argList->append(a);
+                                        }
 }
 
  /*------------------------------------------------------------------------------------------------*/
@@ -1138,7 +1149,7 @@ private                                 {
  /*---- error: EOF in wrong state --------------------------------------------------------------------*/
 
 <*><<EOF>>                              {
-					  if (parsingPrototype) {
+                                         if (parsingPrototype) {
 					    yyterminate();
 
 					  } else if ( include_stack_ptr <= 0 ) {
@@ -1984,7 +1995,7 @@ static void addModule(const char *name, bool isModule)
   DBG_CTX((stderr, "0=========> got module %s\n", name));
 
   if (isModule)
-    current->section = Entry::CLASS_SEC;
+    current->section = Entry::NAMESPACE_SEC;//CLASS_SEC;
   else
     current->section = Entry::FUNCTION_SEC;
 
@@ -2352,7 +2363,7 @@ void FortranLanguageScanner::parseCode(CodeOutputInterface & codeOutIntf,
                    int startLine,
                    int endLine,
                    bool inlineFragment,
-		   MemberDef *memberDef,
+                   MemberDef *memberDef,
                    bool showLineNumbers,
                    Definition *searchCtx,
                    bool collectXRefs
@@ -2411,7 +2422,7 @@ static void scanner_abort()
 #if !defined(YY_FLEX_SUBMINOR_VERSION) 
 //----------------------------------------------------------------------------
 extern "C" { // some bogus code to keep the compiler happy
-  void fortranscannernerYYdummy() { yy_flex_realloc(0,0); } 
+  void fortranscannerYYdummy() { yy_flex_realloc(0,0); } 
 }
 #endif
 

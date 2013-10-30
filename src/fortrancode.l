@@ -50,6 +50,9 @@
 #include "filedef.h"
 #include "namespacedef.h"
 #include "tooltip.h"
+#include <iostream>
+
+using namespace std;
 
 // Toggle for some debugging info
 //#define DBG_CTX(x) fprintf x
@@ -174,7 +177,9 @@ static bool recognizeFixedForm(const char* contents)
       case '\000':
         return FALSE;
       case 'C':
+	if(contents[i+1]!=' ')return FALSE;
       case 'c':
+	if(contents[i+1]!=' ')return FALSE;
       case '*':
         if(column==1) return TRUE;
         if(skipLine) break;
@@ -346,7 +351,7 @@ static void writeMultiLineCodeLink(CodeOutputInterface &ol,
   QCString ref  = d->getReference();
   QCString file = d->getOutputFileBase();
   QCString anchor = d->anchor();
-  QCString tooltip; 
+  QCString tooltip;
   if (!sourceTooltips) // fall back to simple "title" tooltips
   {
     tooltip = d->briefDescriptionAsTooltip();
@@ -379,6 +384,62 @@ static void writeMultiLineCodeLink(CodeOutputInterface &ol,
   }
 }
 
+#if 0
+static QCString fileLocation() 
+{
+  QCString result = g_sourceFileDef?g_sourceFileDef->absFilePath():QCString("[unknown]");
+  result+=":"+QCString().setNum(g_yyLineNr);
+  result+=":"+QCString().setNum(1);
+  return result;
+}
+
+
+/**
+  generates dictionay entries that are used if REFERENCED_BY_RELATION ... options are set
+  (e.g. the "referenced by ..." list after the function documentation) 
+*/
+
+static void addDocCrossReference(MemberDef *src, MemberDef *dst)
+{
+  if (dst->isTypedef() || dst->isEnumerate()) return; // don't add types
+ //printf("======= addDocCrossReference src=%s,dst=%s\n",src->name().data(),dst->name().data());
+  if ((Config_getBool("REFERENCED_BY_RELATION") || Config_getBool("CALLER_GRAPH")) && 
+      (src->isFunction()))
+  {
+    dst->addSourceReferencedBy(src,fileLocation());
+  }
+  if ((Config_getBool("REFERENCES_RELATION") || Config_getBool("CALL_GRAPH")) && (src->isFunction()))
+  {
+    src->addSourceReferences(dst,fileLocation());
+  }
+}
+#endif
+
+//-------------------------------------------------------------------------------
+/**
+  searches for definition of a module (Namespace)
+  @param tname the name of the type
+  @param moduleName name of enclosing module or null, if global entry
+  @param cd the entry, if found or null
+  @param useDict dictionary of data of USE-statement
+  @returns true, if type is found 
+*/
+static bool getFortranNamespaceDefs(const QCString &tname, const QCString &moduleName, 
+                               NamespaceDef *&cd, UseSDict *usedict=0)
+{
+  if (tname.isEmpty()) return FALSE; /* empty name => nothing to link */
+
+  //cout << "=== search for type: " << tname << endl;
+
+  // search for type  
+  if ((cd=Doxygen::namespaceSDict->find(tname))) 
+  {
+    // cout << "=== type found in global module" << tname  << endl;
+    return TRUE;
+  }
+
+  return FALSE;
+}
 
 //-------------------------------------------------------------------------------
 /**
@@ -394,17 +455,17 @@ static bool getFortranTypeDefs(const QCString &tname, const QCString &moduleName
 {
   if (tname.isEmpty()) return FALSE; /* empty name => nothing to link */
 
-  //cout << "=== search for type: " << tname << endl;
+  //std::cout << "=== search for type: " << tname << endl;
 
   // search for type  
   if ((cd=Doxygen::classSDict->find(tname))) 
   {
-    //cout << "=== type found in global module" << endl;
+    //std::cout << "=== type found in global module" << tname  << endl;
     return TRUE;
   }
   else if (moduleName && (cd= Doxygen::classSDict->find(moduleName+"::"+tname))) 
   {
-    //cout << "=== type found in local module" << endl;
+    //std::cout << "=== type found in local module " << tname << endl;
     return TRUE;
   }
   else 
@@ -412,14 +473,16 @@ static bool getFortranTypeDefs(const QCString &tname, const QCString &moduleName
     UseEntry *use;
     for (UseSDict::Iterator di(*usedict); (use=di.current()); ++di)
     {
+      //std::cout << "=== Looking in USE: " << use->module << " for " << tname << endl;
       if ((cd= Doxygen::classSDict->find(use->module+"::"+tname)))
       {
- 	//cout << "===  type found in used module" << endl;
+ 	//std::cout << "===  Type found in used module " << use->module+"::"+tname << cd->isLinkable() << endl;
+        if (!cd->isLinkable()) continue;
         return TRUE;
       }
     }
   }
-
+  //std::cout << "=== Could not find: " << tname << endl;
   return FALSE;
 }
 
@@ -436,20 +499,22 @@ static bool getFortranDefs(const QCString &memberName, const QCString &moduleNam
 {
   if (memberName.isEmpty()) return FALSE; /* empty name => nothing to link */
 
+  //cout << "=== search for variable: " << loc_name << endl;
   // look in local variables
-  for (Scope *scope=scopeStack.last(); scope!=NULL; scope=scopeStack.prev())
-  {
-    if(scope->localVars.find(memberName))
-      return FALSE;
-  }
-
+  //for (Scope *scope=scopeStack.last(); scope!=NULL; scope=scopeStack.prev())
+  //{
+  //  if(scope->localVars.find(loc_name)) {
+  //    return FALSE;
+  //  }
+  //}
+  //cout << "Searching for" << memberName << endl;
   // search for function
   MemberName *mn = Doxygen::functionNameSDict->find(memberName);
   if (!mn)
   {
     mn = Doxygen::memberNameSDict->find(memberName);
   }
-
+  
   if (mn) // name is known
   {
       MemberListIterator mli(*mn);
@@ -458,32 +523,39 @@ static bool getFortranDefs(const QCString &memberName, const QCString &moduleNam
         FileDef  *fd=md->getFileDef();
         GroupDef *gd=md->getGroupDef();
 
- //cout << "found link with same name: " << fd->fileName() << "  " <<  memberName;
- //if (md->getNamespaceDef() != 0) cout << " in namespace " << md->getNamespaceDef()->name();cout << endl;
-
+	//if(fd) cout << "found link with same name: " << fd->isLinkable() << "  " <<  memberName << endl;
+        //cout << "=== searching " << usedict->count()  << " entry " << currentModule <<  endl;
+	//if (md->getNamespaceDef() != 0) cout << " in namespace " << md->getNamespaceDef()->name() << endl;
         if ((gd && gd->isLinkable()) || (fd && fd->isLinkable()))
         {
-           NamespaceDef *nspace= md->getNamespaceDef();
+	  NamespaceDef *nspace= md->getNamespaceDef();
+	  ClassDef *myclass= md->getClassDef();
 
            if (nspace == 0) 
 	   { // found function in global scope
+             //cout << "=== Found " << memberName << " in global scope " << endl;
+             if (myclass != 0)return FALSE;
              return TRUE;
+             //return FALSE;
            }
            else if (moduleName == nspace->name()) 
 	   { // found in local scope
+             //cout << "=== Found " << memberName << " in local scope " << endl;
              return TRUE;
            }
            else 
 	   { // else search in used modules
-	     QCString moduleName= nspace->name();
-	     UseEntry *ue= usedict->find(moduleName);
+	     QCString moduleName = nspace->name();
+	     moduleName.lower();
+             //std::cout << "=== Looking in USE " << moduleName << " for " << memberName << endl;
+	     UseEntry *ue = usedict->find(moduleName);
 	     if (ue) 
 	     {
                // check if only-list exists and if current entry exists is this list
 	       QStringList &only= ue->onlyNames;
 	       if (only.isEmpty()) 
 	       {
-               //cout << " found in module " << moduleName << " entry " << memberName <<  endl;
+		 //cout << "=== Found " << memberName << " in USE " << moduleName <<  endl;
                  return TRUE; // whole module used
                }
                else
@@ -497,7 +569,13 @@ static bool getFortranDefs(const QCString &memberName, const QCString &moduleNam
 	           }
 	         }
 	       }
-             }
+             } else {
+	       //cout << " use module not found " << moduleNamen << " " << usedict->count()  << " entry " << currentModule <<  endl;
+	       for (UseSDict::Iterator di(*usedict); (ue=di.current()); ++di)
+		 {
+		   //cout << "=== use list " << ue->module << " entry " << currentModule << endl;
+		 }
+	     }
            }
         } // if linkable
       } // for
@@ -527,6 +605,8 @@ static bool getLink(UseSDict *usedict, // dictonary with used modules
   MemberDef *md;
   QCString memberName= removeRedundantWhiteSpace(memberText);
 
+  //cout << " Searching for  " << memberText<< " " << usedict->count()  << " entry " << currentModule <<  endl;
+
   if (getFortranDefs(memberName, currentModule, md, usedict) && md->isLinkable())
   { 
     //if (md->isVariable()) return FALSE; // variables aren't handled yet	
@@ -536,13 +616,13 @@ static bool getLink(UseSDict *usedict, // dictonary with used modules
     if (md->getGroupDef()) d = md->getGroupDef();
     if (d && d->isLinkable())
     {
-      if (g_currentDefinition && g_currentMemberDef && 
-          md!=g_currentMemberDef && g_insideBody && g_collectXRefs)
+      if (g_currentDefinition && g_currentMemberDef && md!=g_currentMemberDef && g_insideBody)
       { 
 	addDocCrossReference(g_currentMemberDef,md); 
-      }     
-      writeMultiLineCodeLink(ol,md,text ? text : memberText);
+      }
+      writeMultiLineCodeLink(ol,md,text ? text : memberText);     
       addToSearchIndex(text ? text : memberText);
+      // cout << "=== Linking  " << memberText<< " " << usedict->count()  << " entry " << currentModule <<  endl;
       return TRUE;
     } 
   }
@@ -553,6 +633,7 @@ static bool getLink(UseSDict *usedict, // dictonary with used modules
 static void generateLink(CodeOutputInterface &ol, char *lname)
 {
   ClassDef *cd=0;
+  NamespaceDef *nsd =0;
   QCString tmp = lname;
   tmp = removeRedundantWhiteSpace(tmp.lower());
  
@@ -569,10 +650,16 @@ static void generateLink(CodeOutputInterface &ol, char *lname)
       writeMultiLineCodeLink(ol,cd,tmp);
       addToSearchIndex(tmp.data());
     }
+  } // Check for namespaces
+  else if ( (getFortranNamespaceDefs(tmp, currentModule, nsd, useMembers)) && nsd->isLinkable() )
+  {
+    // write type or interface link
+      writeMultiLineCodeLink(ol,nsd,tmp);
+      addToSearchIndex(tmp.data());
   }
   // check for function/variable
   else if (getLink(useMembers, tmp, ol, tmp)) 
-  {
+    {
     //cout << "=== found link for lowercase " << lname << endl;
   }
   else 
@@ -684,13 +771,13 @@ CHAR      (CHARACTER{ARGS}?|CHARACTER{BS}"*"({BS}[0-9]+|{ARGS}))
 TYPE_SPEC (({NUM_TYPE}({BS}"*"{BS}[0-9]+)?)|({NUM_TYPE}{KIND})|DOUBLE{BS_}COMPLEX|DOUBLE{BS_}PRECISION|{CHAR})
 
 INTENT_SPEC intent{BS}"("{BS}(in|out|in{BS}out){BS}")"
-ATTR_SPEC (IMPLICIT|ALLOCATABLE|DIMENSION{ARGS}|EXTERNAL|{INTENT_SPEC}|INTRINSIC|OPTIONAL|PARAMETER|POINTER|PROTECTED|PRIVATE|PUBLIC|SAVE|TARGET|RECURSIVE|PURE|ELEMENTAL)
-ACCESS_SPEC (PROTECTED|PRIVATE|PUBLIC)
+ATTR_SPEC (IMPLICIT|ALLOCATABLE|DIMENSION{ARGS}|EXTERNAL|{INTENT_SPEC}|INTRINSIC|OPTIONAL|PARAMETER|POINTER|PROTECTED|PRIVATE|PUBLIC|SAVE|TARGET|RECURSIVE|PURE|ELEMENTAL|DEFERRED)
+ACCESS_SPEC (PROTECTED|PRIVATE|PUBLIC|ABSTRACT|EXTENDS)
 /* Assume that attribute statements are almost the same as attributes. */
 ATTR_STMT {ATTR_SPEC}|DIMENSION
-FLOW  (DO|SELECT|CASE|WHERE|IF|THEN|ELSE|WHILE|FORALL|ELSEWHERE|ELSEIF|RETURN|CONTINUE|EXIT)
-COMMANDS  (FORMAT|CONTAINS|MODULE{BS_}PROCEDURE|WRITE|READ|ALLOCATE|ALLOCATED|ASSOCIATED|DEALLOCATE|SIZE|INQUIRE|OPEN|CLOSE|DATA|COMMON)
-IGNORE (CALL)
+FLOW  (DO|SELECT|CASE|WHERE|IF|THEN|ELSE|WHILE|FORALL|ELSEWHERE|ELSEIF|RETURN|CONTINUE|EXIT|CALL|IMPORT)
+COMMANDS  (FORMAT|CONTAINS|MODULE{BS_}PROCEDURE|WRITE|READ|ALLOCATE|ALLOCATED|ASSOCIATED|DEALLOCATE|SIZE|INQUIRE|OPEN|CLOSE|DATA|COMMON|NULLIFY|FLUSH)
+IGNORE (CALLS)
 PREFIX    (RECURSIVE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,2}(RECURSIVE|PURE|ELEMENTAL)?
 
 /* |  */
@@ -704,6 +791,7 @@ PREFIX    (RECURSIVE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,2}(RECURSIVE|PURE|ELEMENTA
 %x SubCall
 %x FuncDef
 %x ClassName
+%x ClassExt
 %x ClassVar
 %x Subprog
 %x DocBlock
@@ -776,8 +864,10 @@ PREFIX    (RECURSIVE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,2}(RECURSIVE|PURE|ELEMENTA
 					  useEntry->module = tmp;
                                           useMembers->append(tmp, useEntry);
 					  addUse(tmp);
+					  // cout << "=== Adding use " << tmp << " to entry " << currentModule << endl;
+					  // cout << "=== Checking insert " << tmp << " " << useMembers->count() << " entry "<< currentModule << endl;
                                         }           
-<Use>,{BS}"ONLY"                        { // TODO: rename
+<Use>,{BS}"ONLY:"                        { // TODO: rename
   					  startFontClass("keywordtype"); 
  					  codifyLines(yytext);
 					  endFontClass();
@@ -787,10 +877,12 @@ PREFIX    (RECURSIVE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,2}(RECURSIVE|PURE|ELEMENTA
 <UseOnly>{BS},{BS}                      { codifyLines(yytext); }
 <UseOnly>{BS}&{BS}"\n"                  { codifyLines(yytext); YY_FTN_RESET}
 <UseOnly>{ID}                           {
+                                          QCString tmp = yytext;
+                                          tmp = tmp.lower();
+                                          useEntry->onlyNames.append(tmp);
                                           g_insideBody=TRUE;
                                           generateLink(*g_code, yytext);
                                           g_insideBody=FALSE;
-                                          useEntry->onlyNames.append(yytext);
                                         }
 <Use,UseOnly>"\n"                       {
                                           unput(*yytext);
@@ -804,9 +896,24 @@ PREFIX    (RECURSIVE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,2}(RECURSIVE|PURE|ELEMENTA
   					  codifyLines(yytext);
 					  endFontClass();
                                           yy_push_state(YY_START);
-					  BEGIN(ClassName); 
-	                                  if (!qstricmp(yytext,"module")) currentModule="module";
+					  BEGIN(ClassName);
+                                          //if (!strcmp(yytext,"module")) currentModule="module"; 
+	                                  if (!strcmp(yytext,"module") || !strcmp(yytext,"MODULE")) currentModule="module";
+	                                  //if (!qstricmp(yytext,"module")) currentModule="module";
 					}
+<Start>("abstract"{BS}"interface")/{BS_}|({COMMA}{ACCESS_SPEC})|\n {  //
+					  startScope();
+  					  startFontClass("keyword"); 
+  					  codifyLines(yytext);
+					  endFontClass();
+                                          yy_push_state(YY_START);
+					  BEGIN(ClassName); 
+					}
+<ClassName>("private"|"public"|"extends"|"abstract")         {
+                                          startFontClass("keyword");
+                                          codifyLines(yytext);
+                                          endFontClass();
+                                        }
 <ClassName>{ID}               	        {
 	                                  if (currentModule == "module")
                                           {
@@ -870,7 +977,7 @@ PREFIX    (RECURSIVE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,2}(RECURSIVE|PURE|ELEMENTA
 					  endFontClass();
                                         }
  /*-------- variable declaration ----------------------------------*/
-<Start>"type"{BS}"("                    {
+  <Start>("type"|"class"|"procedure"){BS}"("                    {
                                           yy_push_state(YY_START);
 					  BEGIN(TypeDecl);
    					  startFontClass("keywordtype");
@@ -887,6 +994,13 @@ PREFIX    (RECURSIVE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,2}(RECURSIVE|PURE|ELEMENTA
    					  startFontClass("keywordtype");
 					  g_code->codify(yytext);
 					  endFontClass();
+                                        }
+<Start>"procedure ::"                  {
+                                          yy_push_state(YY_START);
+                                          BEGIN(Declaration);
+                                          startFontClass("keywordtype");
+                                          g_code->codify(yytext);
+                                          endFontClass();
                                         }
 <Start>{TYPE_SPEC}/[,:( ]               { 
                                           yy_push_state(YY_START);
@@ -906,15 +1020,16 @@ PREFIX    (RECURSIVE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,2}(RECURSIVE|PURE|ELEMENTA
 					  endFontClass();
   					}
 <Declaration>{ID}                       { // local var
-                                          if (g_currentMemberDef && !g_currentMemberDef->isFunction())
-                                          {
+                                          //if (g_currentMemberDef && !g_currentMemberDef->isFunction())
+                                          //{
                                             g_code->codify(yytext);
                                             addLocalVar(yytext);
-                                          }
-                                           else
-                                          {
-                                            generateLink(*g_code, yytext);
-                                          }
+                                          //}
+                                          // else
+                                          //{
+                                          //  generateLink(*g_code, yytext);
+                                          //}
+					  yy_pop_state();
 					}
 <Declaration>[(]			{ // start of array specification
 					  bracketCount++;
