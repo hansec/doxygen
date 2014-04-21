@@ -866,6 +866,7 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
                                         }           
 <UseOnly,Import>{BS},{BS}                      { codifyLines(yytext); }
 <UseOnly>{BS}&{BS}"\n"                  { codifyLines(yytext); YY_FTN_RESET}
+<UseOnly>{BS}"\n"{BS}"$"                { codifyLines(yytext); YY_FTN_RESET}
 <UseOnly>{ID}                           {
                                           useEntry->onlyNames.append(yytext);
                                           g_insideBody=TRUE;
@@ -891,7 +892,7 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
             g_insideBody=FALSE;
                                         }
  /*-------- fortran module  -----------------------------------------*/
-<Start>^{BS}("block"{BS}"data"|"program"|"module"|"type"|"interface"|"abstract"{BS}"interface")/{BS_}|({COMMA}({ACCESS_SPEC}|"extends"))|\n {  //
+<Start>("block"{BS}"data"|"program"|"module"|"type")/{BS_}|({COMMA}({ACCESS_SPEC}|"extends")) {  // These entities must be named
 					  startScope();
   					  startFontClass("keyword"); 
   					  codifyLines(yytext);
@@ -901,6 +902,14 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
 	                                  if (!qstricmp(yytext,"module"))currentModule="module";
                                     if (!qstricmp(yytext,"type")) currentClass="class";
 					}
+<Start>("interface"|"abstract"{BS}"interface")/{BS_}|({COMMA}({ACCESS_SPEC}))|\n {  // Interfaces can be unnamed
+            startScope();
+              startFontClass("keyword"); 
+              codifyLines(yytext);
+            endFontClass();
+                                          yy_push_state(YY_START);
+            BEGIN(ClassName);
+          }
 <Start>^{BS}"module"{BS_}"procedure"/{BS_}|({ID})|\n       {
   startFontClass("keyword"); 
               codifyLines(yytext);
@@ -994,7 +1003,7 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
 					  generateLink(*g_code,yytext);
                                           yy_pop_state();
                                         }
-<Start>^{BS}"end"{BS}("block"{BS}"data"|{SUBPROG}|"module"|"program"|"type"|"interface"){BS}/(\n|!) {  // Fortran subroutine or function ends
+<Start>^{BS}"end"{BS}({BS}|"block"{BS}"data"|{SUBPROG}|"module"|"program"|"type"|"interface"){BS}/(\n|!) {  // Fortran subroutine or function ends
                                           //cout << "===> end function " << yytext << endl;
                                           endScope();
    					  startFontClass("keyword");
@@ -1002,7 +1011,7 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
 					  endFontClass();
                                         }
  /*-------- variable declaration ----------------------------------*/
-<Start>{TYPE_PREFIX}                      {
+<Start>^{BS}{TYPE_PREFIX}/{ID}                      {
                                           yy_push_state(YY_START);
 					  BEGIN(TypeDecl);
    					  startFontClass("keywordtype");
