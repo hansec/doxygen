@@ -617,7 +617,7 @@ static void generateLink(CodeOutputInterface &ol, char *lname)
     }
   }
   // check for module
-  else if ( (getFortranNamespaceDefs(tmp, nsd)) && nsd->isLinkable() && currentClass!="class" )
+  else if ( (getFortranNamespaceDefs(tmp, nsd)) && nsd->isLinkable() && currentClass == 0 )
   { // write module link
     writeMultiLineCodeLink(ol,nsd,tmp);
     addToSearchIndex(tmp.data());
@@ -944,15 +944,17 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
 <ClassName>{ID}               	        {
 	                                  if (currentModule == "module")
                                           {
-                                            currentModule=yytext;
+                                            currentModule = yytext;
                                             currentModule = currentModule.lower();
                                             setScopeName(yytext);
                                           }
                                           if(currentClass=="class") 
                                           {
+                                            currentClass = yytext;
+                                            currentClass = currentClass.lower();
                                           setScopeName(yytext);
                                         }
-					  generateLink(*g_code,yytext);
+                                         generateLink(*g_code,yytext);
                                           yy_pop_state();
  					}
 <ClassName>\n				{ // interface may be without name
@@ -1050,7 +1052,7 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
 					  endFontClass();
   					}
 <Declaration>{ID}                       { // local var
-                                          if ((g_currentMemberDef && !g_currentMemberDef->isFunction()) || currentClass=="class") 
+                                          if ((g_currentMemberDef && !g_currentMemberDef->isFunction()) || currentClass != 0 )
                                           {
                                             addLocalVar(yytext);
                                           }
@@ -1303,6 +1305,13 @@ void parseFortranCode(CodeOutputInterface &od,const char *className,const QCStri
   if (!g_exampleName.isEmpty())
   {
     g_exampleFile = convertNameToFile(g_exampleName+"-example");
+  }
+  // Clear scopeStack
+  currentModule = 0;
+  currentClass = 0;
+  while (!scopeStack.isEmpty())
+  {
+    endScope();
   }
   g_includeCodeFragment = inlineFragment;
   startCodeLine();
