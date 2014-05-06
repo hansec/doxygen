@@ -755,13 +755,13 @@ TYPE_SPEC (({NUM_TYPE}({BS}"*"{BS}[0-9]+)?)|({NUM_TYPE}{KIND})|DOUBLE{BS}COMPLEX
 TYPE_PREFIX ((TYPE|CLASS|PROCEDURE){BS}"(")
 
 INTENT_SPEC intent{BS}"("{BS}(in|out|in{BS}out){BS}")"
-ATTR_SPEC (IMPLICIT|ALLOCATABLE|DIMENSION{ARGS}|EXTERNAL|{INTENT_SPEC}|VALUE|INTRINSIC|OPTIONAL|PARAMETER|POINTER|PROTECTED|PRIVATE|PUBLIC|SAVE|TARGET|RECURSIVE|PURE|IMPURE|ELEMENTAL|NOPASS|DEFERRED)
-ACCESS_SPEC (PROTECTED|PRIVATE|PUBLIC|ABSTRACT)
+ATTR_SPEC (IMPLICIT|ALLOCATABLE|DIMENSION{ARGS}|EXTERNAL|{INTENT_SPEC}|INTRINSIC|OPTIONAL|PARAMETER|POINTER|PROTECTED|PRIVATE|PUBLIC|SAVE|TARGET|RECURSIVE|PURE|IMPURE|ELEMENTAL|VALUE|NOPASS|DEFERRED)
+ACCESS_SPEC (PROTECTED|PRIVATE|PUBLIC)
 /* Assume that attribute statements are almost the same as attributes. */
 ATTR_STMT {ATTR_SPEC}|DIMENSION
-FLOW  (DO|SELECT|CASE|SELECTCASE|WHERE|IF|THEN|ELSE|WHILE|FORALL|ELSEWHERE|ELSEIF|RETURN|CONTINUE|EXIT|CALL|SELECT{BS_}TYPE)
+FLOW      (DO|SELECT|CASE|SELECT{BS}(CASE|TYPE)|WHERE|IF|THEN|ELSE|WHILE|FORALL|ELSEWHERE|ELSEIF|RETURN|CONTINUE|EXIT)
 COMMANDS  (FORMAT|CONTAINS|MODULE{BS_}PROCEDURE|WRITE|READ|ALLOCATE|ALLOCATED|ASSOCIATED|PRESENT|DEALLOCATE|NULLIFY|SIZE|INQUIRE|OPEN|CLOSE|FLUSH|DATA|COMMON)
-IGNORE (DOT_PRODUCT|SUM)
+IGNORE    (CALL)
 PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|IMPURE|PURE|ELEMENTAL)?
 
 /* |  */
@@ -799,13 +799,14 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
   					  codifyLines(yytext);
                                         }
  /*-------- inner construct ---------------------------------------------------*/
-<Start>{COMMANDS}/[,( \t\n].*           {  // highlight
+ 
+<Start>{COMMANDS}/[,( \t\n]             {  // highlight
    					  /* font class is defined e.g. in doxygen.css */
   					  startFontClass("keyword");
   					  codifyLines(yytext);
 					  endFontClass();
 					}
-<Start>{FLOW}/[,( \t\n]               {
+<Start>{FLOW}/[,( \t\n]                 {
                                           if (g_isFixedForm)
                                           {
                                             if ((yy_my_start == 1) && ((yytext[0] == 'c') || (yytext[0] == 'C'))) YY_FTN_REJECT;
@@ -815,16 +816,11 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
   					  codifyLines(yytext);
 					  endFontClass();
 					}
-<Start>^{BS}(TYPE|CLASS){BS_}(IS|DEFAULT){BS}/[( \t\n]              {
-              startFontClass("keywordflow");
-              codifyLines(yytext);
-            endFontClass();
-          }
-<Start>^{BS}"namelist"/[//]           {  // Namelist specification
-              startFontClass("keyword");
-              codifyLines(yytext);
-            endFontClass();
-          } 
+<Start>^{BS}(CASE|CLASS|TYPE){BS_}(IS|DEFAULT) {
+                                          startFontClass("keywordflow");
+                                          codifyLines(yytext);
+                                          endFontClass();
+                                        }
 <Start>"end"({BS}{FLOW})?/[ \t\n]       { // list is a bit long as not all have possible end
   					  startFontClass("keywordflow");
   					  codifyLines(yytext);
@@ -835,6 +831,11 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
   					  startFontClass("keywordtype"); 
   					  codifyLines(yytext);
 					  endFontClass();
+                                        }
+<Start>^{BS}"namelist"/[//]             {  // Namelist specification
+                                          startFontClass("keywordtype");
+                                          codifyLines(yytext);
+                                          endFontClass();
                                         }
  /*-------- use statement -------------------------------------------*/
 <Start>"use"{BS_}                       { 
@@ -866,9 +867,9 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
 					  endFontClass();
                                           yy_push_state(YY_START);
 					  BEGIN(UseOnly);     
-                                        }           
+                                        }
 <UseOnly,Import>{BS},{BS}                      { codifyLines(yytext); }
-<UseOnly>{BS}&{BS}"\n"                  { codifyLines(yytext); YY_FTN_RESET}
+<UseOnly,Import>{BS}&{BS}"\n"                  { codifyLines(yytext); YY_FTN_RESET}
 <UseOnly>{BS}"\n"{BS}"$"                { codifyLines(yytext); YY_FTN_RESET}
 <UseOnly>{ID}                           {
                                           useEntry->onlyNames.append(yytext);
@@ -876,26 +877,24 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
                                           generateLink(*g_code, yytext);
                                           g_insideBody=FALSE;
                                         }
-<Use,UseOnly,Import>"\n"                       {
+<Use,UseOnly,Import>"\n"                {
                                           unput(*yytext);
                                           yy_pop_state();YY_FTN_RESET
                                         }
-<Start>"import"{BS_}                       { 
-              startFontClass("keywordflow"); 
-              codifyLines(yytext);
-            endFontClass();
+<Start>"import"{BS_}                    {
+                                          startFontClass("keywordtype");
+                                          codifyLines(yytext);
+                                          endFontClass();
                                           yy_push_state(YY_START);
-            BEGIN(Import);     
+                                          BEGIN(Import);
                                         }
-<Import>{ID}                           {
-                                          QCString tmp = yytext;
-                                          tmp = tmp.lower();
-            g_insideBody=TRUE;
+<Import>{ID}                            {
+                                          g_insideBody=TRUE;
                                           generateLink(*g_code, yytext);
-            g_insideBody=FALSE;
+                                          g_insideBody=FALSE;
                                         }
  /*-------- fortran module  -----------------------------------------*/
-<Start>("block"{BS}"data"|"program"|"module"|"type")/{BS_}|({COMMA}({ACCESS_SPEC}|"extends")) {  // These entities must be named
+<Start>("block"{BS}"data"|"program"|"module"|"type")/{BS_}|({COMMA}({ACCESS_SPEC}|ABSTRACT|EXTENDS)) {  // These entities must be named
 					  startScope();
   					  startFontClass("keyword"); 
   					  codifyLines(yytext);
@@ -918,7 +917,7 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
               codifyLines(yytext);
             endFontClass();
 }
-<ClassName>{ACCESS_SPEC}       {
+<ClassName>({ACCESS_SPEC}|ABSTRACT)       {
   startFontClass("keyword"); 
               codifyLines(yytext);
             endFontClass();
@@ -1016,7 +1015,7 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
 					  endFontClass();
                                         }
  /*-------- variable declaration ----------------------------------*/
-<Start>^{BS}{TYPE_PREFIX}/{ID}                      {
+<Start>^{BS}{TYPE_PREFIX}/{ID}          {
                                           yy_push_state(YY_START);
 					  BEGIN(TypeDecl);
    					  startFontClass("keywordtype");
