@@ -391,9 +391,9 @@ static void writeMultiLineCodeLink(CodeOutputInterface &ol,
   searches for definition of a module (Namespace)
   @param mname the name of the module
   @param cd the entry, if found or null
-  @returns true, if module is found 
+  @returns true, if module is found
 */
-static bool getFortranNamespaceDefs(const QCString &mname, 
+static bool getFortranNamespaceDefs(const QCString &mname,
                                NamespaceDef *&cd)
 {
   if (mname.isEmpty()) return FALSE; /* empty name => nothing to link */
@@ -401,7 +401,7 @@ static bool getFortranNamespaceDefs(const QCString &mname,
   //cout << "=== search for type: " << tname << endl;
 
   // search for module
-  if ((cd=Doxygen::namespaceSDict->find(mname))) 
+  if ((cd=Doxygen::namespaceSDict->find(mname)))
   {
     // cout << "=== global module found " << mname  << endl;
     return TRUE;
@@ -479,16 +479,34 @@ static bool getFortranDefs(const QCString &memberName, const QCString &moduleNam
   }
 
   // search for function
-  MemberName *mn = Doxygen::functionNameSDict->find(memberName);
-  if (!mn)
-  {
-    mn = Doxygen::memberNameSDict->find(memberName);
-  }
+  MemberName *mn_funs = Doxygen::functionNameSDict->find(memberName);
+  MemberName *mn_mems = Doxygen::memberNameSDict->find(memberName);
 
-  if (mn) // name is known
+  MemberListIterator *mli;
+  for (int i=0; i<2; i++)
   {
-      MemberListIterator mli(*mn);
-      for (mli.toFirst();(md=mli.current());++mli) // all found functions with given name
+    if (i==0) {
+      if (!mn_funs)
+      {
+      continue;
+      }
+      else
+      {
+        mli = new MemberListIterator(*mn_funs);
+      }
+    }
+    else if (i==1)
+    {
+      if (!mn_mems)
+      {
+      continue;
+      }
+      else
+      {
+        mli = new MemberListIterator(*mn_mems);
+      }
+    }
+      for (mli->toFirst();(md=mli->current());++*mli) // all found functions with given name
       {
         FileDef  *fd=md->getFileDef();
         GroupDef *gd=md->getGroupDef();
@@ -505,8 +523,7 @@ static bool getFortranDefs(const QCString &memberName, const QCString &moduleNam
 
         if ((gd && gd->isLinkable()) || (fd && fd->isLinkable()))
         {
-           NamespaceDef *nspace = md->getNamespaceDef();
-
+           NamespaceDef *nspace= md->getNamespaceDef();
 
            if (nspace == 0) 
 	         { // found function in global scope
@@ -515,7 +532,7 @@ static bool getFortranDefs(const QCString &memberName, const QCString &moduleNam
               }
            }
            else if (moduleName == nspace->name()) 
-	         { // found in local scope
+           { // found in local scope
              return TRUE;
            }
            else 
@@ -589,7 +606,7 @@ static bool getLink(UseSDict *usedict, // dictonary with used modules
       writeMultiLineCodeLink(ol,md,text ? text : memberText);
       addToSearchIndex(text ? text : memberText);
       return TRUE;
-    } 
+    }
   }
   return FALSE;
 }
@@ -601,7 +618,7 @@ static void generateLink(CodeOutputInterface &ol, char *lname)
   NamespaceDef *nsd=0;
   QCString tmp = lname;
   tmp = removeRedundantWhiteSpace(tmp.lower());
-  
+
   // check if lowercase lname is a linkable type or interface
   if ( (getFortranTypeDefs(tmp, currentModule, cd, useMembers)) && cd->isLinkable() )
   {
@@ -759,9 +776,9 @@ ATTR_SPEC (IMPLICIT|ALLOCATABLE|DIMENSION{ARGS}|EXTERNAL|{INTENT_SPEC}|INTRINSIC
 ACCESS_SPEC (PROTECTED|PRIVATE|PUBLIC)
 /* Assume that attribute statements are almost the same as attributes. */
 ATTR_STMT {ATTR_SPEC}|DIMENSION
-FLOW      (DO|SELECT|CASE|SELECT{BS}(CASE|TYPE)|WHERE|IF|THEN|ELSE|WHILE|FORALL|ELSEWHERE|ELSEIF|RETURN|CONTINUE|EXIT)
+FLOW      (CALL|DO|SELECT|CASE|SELECT{BS}(CASE|TYPE)|WHERE|IF|THEN|ELSE|WHILE|FORALL|ELSEWHERE|ELSEIF|RETURN|CONTINUE|EXIT)
 COMMANDS  (FORMAT|CONTAINS|MODULE{BS_}PROCEDURE|WRITE|READ|ALLOCATE|ALLOCATED|ASSOCIATED|PRESENT|DEALLOCATE|NULLIFY|SIZE|INQUIRE|OPEN|CLOSE|FLUSH|DATA|COMMON)
-IGNORE    (CALL)
+IGNORE    (DOT_PRODUCT)
 PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|IMPURE|PURE|ELEMENTAL)?
 
 /* |  */
@@ -827,7 +844,7 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
 					  endFontClass();
 					}
 
-<Start>"implicit"{BS_}"none"             { 
+<Start>"implicit"{BS}"none"             {
   					  startFontClass("keywordtype"); 
   					  codifyLines(yytext);
 					  endFontClass();
@@ -868,11 +885,13 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
                                           yy_push_state(YY_START);
 					  BEGIN(UseOnly);     
                                         }
-<UseOnly,Import>{BS},{BS}                      { codifyLines(yytext); }
-<UseOnly,Import>{BS}&{BS}"\n"                  { codifyLines(yytext); YY_FTN_RESET}
+<UseOnly,Import>{BS},{BS}               { codifyLines(yytext); }
+<UseOnly,Import>{BS}&{BS}"\n"           { codifyLines(yytext); YY_FTN_RESET}
 <UseOnly>{BS}"\n"{BS}"$"                { codifyLines(yytext); YY_FTN_RESET}
 <UseOnly>{ID}                           {
-                                          useEntry->onlyNames.append(yytext);
+                                          QCString tmp = yytext;
+                                          tmp = tmp.lower();
+                                          useEntry->onlyNames.append(tmp);
                                           g_insideBody=TRUE;
                                           generateLink(*g_code, yytext);
                                           g_insideBody=FALSE;
@@ -901,31 +920,31 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
 					  endFontClass();
                                           yy_push_state(YY_START);
 					  BEGIN(ClassName); 
-	                                  if (!qstricmp(yytext,"module"))currentModule="module";
+	                                  if (!qstricmp(yytext,"module")) currentModule="module";
                                     if (!qstricmp(yytext,"type")) currentClass="class";
 					}
 <Start>("interface"|"abstract"{BS}"interface")/{BS_}|({COMMA}({ACCESS_SPEC}))|\n {  // Interfaces can be unnamed
             startScope();
-              startFontClass("keyword"); 
+              startFontClass("keyword");
               codifyLines(yytext);
             endFontClass();
                                           yy_push_state(YY_START);
             BEGIN(ClassName);
           }
 <Start>^{BS}"module"{BS_}"procedure"/{BS_}|({ID})|\n       {
-  startFontClass("keyword"); 
+  startFontClass("keyword");
               codifyLines(yytext);
             endFontClass();
 }
 <ClassName>({ACCESS_SPEC}|ABSTRACT)       {
-  startFontClass("keyword"); 
+  startFontClass("keyword");
               codifyLines(yytext);
             endFontClass();
 }
 <ClassName>"extends"({BS})"("       {
   yy_push_state(YY_START);
   BEGIN(ExtDecl);
-  startFontClass("keyword"); 
+  startFontClass("keyword");
   codifyLines(yytext);
   endFontClass();
 }
@@ -943,15 +962,15 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
 <ClassName>{ID}               	        {
 	                                  if (currentModule == "module")
                                           {
-                                            currentModule = yytext;
+                                            currentModule=yytext;
                                             currentModule = currentModule.lower();
-                                            setScopeName(yytext);
+                                            setScopeName(currentModule);
                                           }
-                                          if(currentClass=="class") 
+                                          if(currentClass=="class")
                                           {
                                             currentClass = yytext;
                                             currentClass = currentClass.lower();
-                                          setScopeName(yytext);
+                                          setScopeName(currentClass);
                                         }
                                          generateLink(*g_code,yytext);
                                           yy_pop_state();
@@ -990,7 +1009,7 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
 <Subprog>"(".*                          { // ignore rest of line 
  					  codifyLines(yytext);
                                         }
-<Subprog>"\n"                { codifyLines(yytext);
+<Subprog,Subprogend>"\n"                { codifyLines(yytext);
                                           yy_pop_state();
                                           YY_FTN_RESET
                                         }
