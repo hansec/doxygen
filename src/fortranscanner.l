@@ -99,13 +99,15 @@ struct SymbolModifiers {
   bool nonoverridable;
   bool nopass;
   bool pass;
+  bool contiguous;
+  bool volat; /* volatile is a reserverd name */
   QCString passVar;
 
   SymbolModifiers() : type(), returnName(), protection(NONE_P), direction(NONE_D),
     optional(FALSE), protect(FALSE), dimension(), allocatable(FALSE),
     external(FALSE), intrinsic(FALSE), parameter(FALSE),
     pointer(FALSE), target(FALSE), save(FALSE), deferred(FALSE), nonoverridable(FALSE),
-    nopass(FALSE), pass(FALSE), passVar() {}
+    nopass(FALSE), pass(FALSE), contiguous(FALSE), volat(FALSE), passVar() {}
 
   SymbolModifiers& operator|=(const SymbolModifiers &mdfs);
   SymbolModifiers& operator|=(QCString mdfrString);
@@ -258,11 +260,12 @@ CHAR      (CHARACTER{ARGS}?|CHARACTER{BS}"*"({BS}[0-9]+|{ARGS}))
 TYPE_SPEC (({NUM_TYPE}({BS}"*"{BS}[0-9]+)?)|({NUM_TYPE}{KIND})|DOUBLE{BS}COMPLEX|DOUBLE{BS}PRECISION|{CHAR}|TYPE{ARGS}|CLASS{ARGS}|PROCEDURE{ARGS}?)
 
 INTENT_SPEC intent{BS}"("{BS}(in|out|in{BS}out){BS}")"
-ATTR_SPEC (ALLOCATABLE|DIMENSION{ARGS}|EXTERNAL|{INTENT_SPEC}|INTRINSIC|OPTIONAL|PARAMETER|POINTER|PROTECTED|PRIVATE|PUBLIC|SAVE|TARGET|NOPASS|PASS{ARGS}?|DEFERRED|NON_OVERRIDABLE)
+ATTR_SPEC (EXTERNAL|ALLOCATABLE|DIMENSION{ARGS}|{INTENT_SPEC}|INTRINSIC|OPTIONAL|PARAMETER|POINTER|PROTECTED|PRIVATE|PUBLIC|SAVE|TARGET|NOPASS|PASS{ARGS}?|DEFERRED|NON_OVERRIDABLE|CONTIGUOUS|VOLATILE)
 ACCESS_SPEC (PRIVATE|PUBLIC)
 LANGUAGE_BIND_SPEC BIND{BS}"("{BS}C{BS}(,{BS}NAME{BS}"="{BS}"\""(.*)"\""{BS})?")"
 /* Assume that attribute statements are almost the same as attributes. */
 ATTR_STMT {ATTR_SPEC}|DIMENSION|{ACCESS_SPEC}
+EXTERNAL_STMT (EXTERNAL)
 
 CONTAINS  CONTAINS
 PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|IMPURE|PURE|ELEMENTAL)?
@@ -726,6 +729,18 @@ private                                 {
 					  }
 					}
   */
+{EXTERNAL_STMT}/({BS}"::"|{BS_}{ID})   { 
+                                          /* external can be a "type" or an attribute */
+                                          if(YY_START == Start)
+                                          {
+                                            addModule(NULL); 
+                                            yy_push_state(ModuleBody); //anon program
+                                          }
+                                          QCString tmp = yytext;
+                                          currentModifiers |= tmp.stripWhiteSpace();
+					  argType = QCString(yytext).simplifyWhiteSpace().lower();
+					  yy_push_state(AttributeList);
+  				       }
 {ATTR_STMT}/{BS_}{ID}		       |
 {ATTR_STMT}/{BS}"::"                   { 
                                           /* attribute statement starts */
@@ -739,11 +754,12 @@ private                                 {
 {ID}	                               {
                                        }  
 ^{BS}"type"{BS_}"is"/{BS_}             { }
+^{BS}"type"{BS}"="                     { }
 }
 <AttributeList>{
 {COMMA}					{}
 {BS}					{}
-{ATTR_SPEC}.				{ /* update current modifierswhen it is an ATTR_SPEC and not a variable name */
+{ATTR_SPEC}.				{ /* update current modifiers when it is an ATTR_SPEC and not a variable name */
             				  /* bug_625519 */
                                           QChar chr = yytext[(int)yyleng-1];
                                           if (chr.isLetter() || chr.isDigit() || (chr == '_'))
@@ -1558,6 +1574,8 @@ SymbolModifiers& SymbolModifiers::operator|=(const SymbolModifiers &mdfs)
   nopass |= mdfs.nopass;
   pass |= mdfs.pass;
   passVar = mdfs.passVar;
+  contiguous |= mdfs.contiguous;
+  volat |= mdfs.volat;
   return *this;
 }
 
@@ -1635,6 +1653,14 @@ SymbolModifiers& SymbolModifiers::operator|=(QCString mdfString)
   else if (mdfString=="non_overridable")
   {
     newMdf.nonoverridable = TRUE;
+  }
+  else if (mdfString=="contiguous")
+  {
+    newMdf.contiguous = TRUE;
+  }
+  else if (mdfString=="volatile")
+  {
+    newMdf.volat = TRUE;
   }
   else if (mdfString.contains("pass"))
   {
@@ -1722,8 +1748,11 @@ static QCString applyModifiers(QCString typeName, SymbolModifiers& mdfs)
   }
   if (mdfs.external) 
   {
-    if (!typeName.isEmpty()) typeName += ", ";
-    typeName += "external";
+    if (!typeName.contains("external"))
+    {
+      if (!typeName.isEmpty()) typeName += ", ";
+      typeName += "external";
+    }
   }
   if (mdfs.intrinsic) 
   {
@@ -1786,6 +1815,16 @@ static QCString applyModifiers(QCString typeName, SymbolModifiers& mdfs)
   {
     if (!typeName.isEmpty()) typeName += ", ";
     typeName += "protected";
+  }
+  if (mdfs.contiguous)
+  {
+    if (!typeName.isEmpty()) typeName += ", ";
+    typeName += "contiguous";
+  }
+  if (mdfs.volat)
+  {
+    if (!typeName.isEmpty()) typeName += ", ";
+    typeName += "volatile";
   }
 
   return typeName;
@@ -2154,79 +2193,117 @@ static void handleCommentBlock(const QCString &doc,bool brief)
 }
 
 //----------------------------------------------------------------------------
-
+/// Handle parameter description as defined after the declaration of the parameter
 static void subrHandleCommentBlock(const QCString &doc,bool brief)
 {
   QCString loc_doc;
+  loc_doc = doc.stripWhiteSpace();
+
   Entry *tmp_entry = current; 
   current = subrCurrent.getFirst(); // temporarily switch to the entry of the subroutine / function
 
   // Still in the specification section so no inbodyDocs yet, but parameter documentation
   current->inbodyDocs = "";
 
-  if (docBlock.stripWhiteSpace().find("\\param") == 0)
+  // strip \\param or @param, so we can do some extra checking. We will add it later on again.
+  if (loc_doc.find("\\param") == 0)
   {
-    handleCommentBlock("\n\n"+doc,brief);
+    loc_doc = loc_doc.right(loc_doc.length()-strlen("\\param")).stripWhiteSpace();
   }
-  else if (docBlock.stripWhiteSpace().find("@param") == 0)
+  else if (loc_doc.find("@param") == 0)
   {
-    handleCommentBlock("\n\n"+doc,brief);
+    loc_doc = loc_doc.right(loc_doc.length()-strlen("@param")).stripWhiteSpace();
   }
-  else 
+
+  // direction as defined with the declaration of the parameter
+  int dir1 = modifiers[current_root][argName.lower()].direction;
+  // in description [in] is specified
+  if (loc_doc.lower().find(directionParam[SymbolModifiers::IN]) == 0)
   {
-    int dir1 = modifiers[current_root][argName.lower()].direction;
-    loc_doc = doc.stripWhiteSpace();
-    if (loc_doc.lower().find(directionParam[SymbolModifiers::IN]) == 0)
+    // check if with the declaration intent(in) or nothing has been specified
+    if ((directionParam[dir1] == directionParam[SymbolModifiers::NONE_D]) ||
+        (directionParam[dir1] == directionParam[SymbolModifiers::IN]))
     {
-      if ((directionParam[dir1] == directionParam[SymbolModifiers::NONE_D]) ||
-          (directionParam[dir1] == directionParam[SymbolModifiers::IN]))
+      // strip direction
+      loc_doc = loc_doc.right(loc_doc.length()-strlen(directionParam[SymbolModifiers::IN]));
+      // in case of emty documentation or (now) just name, consider it as no documemntation
+      if (loc_doc.isEmpty() || (loc_doc.lower() == argName.lower()))
       {
-        handleCommentBlock(QCString("\n\n@param ") + directionParam[SymbolModifiers::IN] + " " + 
-	                   argName + " " + loc_doc.right(loc_doc.length()-strlen(directionParam[SymbolModifiers::IN])),brief);
+        // reset current back to the part inside the routine
+        current=tmp_entry;
+        return;
       }
-      else
-      {
-        warn(yyFileName,yyLineNr, "inconsistency between intent attribute and documenation for variable: "+argName);
-        handleCommentBlock(QCString("\n\n@param ") + directionParam[dir1] + " " + 
-	                   argName + " " + doc,brief);
-      }
-    }
-    else if (loc_doc.lower().find(directionParam[SymbolModifiers::OUT]) == 0)
-    {
-      if ((directionParam[dir1] == directionParam[SymbolModifiers::NONE_D]) ||
-          (directionParam[dir1] == directionParam[SymbolModifiers::OUT]))
-      {
-        handleCommentBlock(QCString("\n\n@param ") + directionParam[SymbolModifiers::OUT] + " " + 
-	                   argName + " " + loc_doc.right(loc_doc.length()-strlen(directionParam[SymbolModifiers::OUT])),brief);
-      }
-      else
-      {
-        warn(yyFileName,yyLineNr, "inconsistency between intent attribute and documenation for variable: "+argName);
-        handleCommentBlock(QCString("\n\n@param ") + directionParam[dir1] + " " + 
-	                   argName + " " + doc,brief);
-      }
-    }
-    else if (loc_doc.lower().find(directionParam[SymbolModifiers::INOUT]) == 0)
-    {
-      if ((directionParam[dir1] == directionParam[SymbolModifiers::NONE_D]) ||
-          (directionParam[dir1] == directionParam[SymbolModifiers::INOUT]))
-      {
-        handleCommentBlock(QCString("\n\n@param ") + directionParam[SymbolModifiers::INOUT] + " " + 
-	                   argName + " " + loc_doc.right(loc_doc.length()-strlen(directionParam[SymbolModifiers::INOUT])),brief);
-      }
-      else
-      {
-        warn(yyFileName,yyLineNr, "inconsistency between intent attribute and documenation for variable: "+argName);
-        handleCommentBlock(QCString("\n\n@param ") + directionParam[dir1] + " " + 
-	                   argName + " " + doc,brief);
-      }
+      handleCommentBlock(QCString("\n\n@param ") + directionParam[SymbolModifiers::IN] + " " + 
+                         argName + " " + loc_doc,brief);
     }
     else
     {
+      // something different specified, give warning and leave error.
+      warn(yyFileName,yyLineNr, "Routine: " + current->name + current->args +
+           " inconsistency between intent attribute and documentation for parameter: " + argName);
       handleCommentBlock(QCString("\n\n@param ") + directionParam[dir1] + " " + 
-	                 argName + " " + doc,brief);
+                         argName + " " + loc_doc,brief);
     }
   }
+  // analogous to the [in] case, here [out] direction specified
+  else if (loc_doc.lower().find(directionParam[SymbolModifiers::OUT]) == 0)
+  {
+    if ((directionParam[dir1] == directionParam[SymbolModifiers::NONE_D]) ||
+        (directionParam[dir1] == directionParam[SymbolModifiers::OUT]))
+    {
+      loc_doc = loc_doc.right(loc_doc.length()-strlen(directionParam[SymbolModifiers::OUT]));
+      if (loc_doc.isEmpty() || (loc_doc.lower() == argName.lower()))
+      {
+        current=tmp_entry;
+        return;
+      }
+      handleCommentBlock(QCString("\n\n@param ") + directionParam[SymbolModifiers::OUT] + " " + 
+                         argName + " " + loc_doc,brief);
+    }
+    else
+    {
+      warn(yyFileName,yyLineNr, "Routine: " + current->name + current->args +
+           " inconsistency between intent attribute and documentation for parameter: " + argName);
+      handleCommentBlock(QCString("\n\n@param ") + directionParam[dir1] + " " + 
+                         argName + " " + loc_doc,brief);
+    }
+  }
+  // analogous to the [in] case, here [in,out] direction specified
+  else if (loc_doc.lower().find(directionParam[SymbolModifiers::INOUT]) == 0)
+  {
+    if ((directionParam[dir1] == directionParam[SymbolModifiers::NONE_D]) ||
+        (directionParam[dir1] == directionParam[SymbolModifiers::INOUT]))
+    {
+      loc_doc = loc_doc.right(loc_doc.length()-strlen(directionParam[SymbolModifiers::INOUT]));
+      if (loc_doc.isEmpty() || (loc_doc.lower() == argName.lower()))
+      {
+        current=tmp_entry;
+        return;
+      }
+      handleCommentBlock(QCString("\n\n@param ") + directionParam[SymbolModifiers::INOUT] + " " + 
+                         argName + " " + loc_doc,brief);
+    }
+    else
+    {
+      warn(yyFileName,yyLineNr, "Routine: " + current->name + current->args +
+           " inconsistency between intent attribute and documentation for parameter: " + argName);
+      handleCommentBlock(QCString("\n\n@param ") + directionParam[dir1] + " " + 
+                         argName + " " + loc_doc,brief);
+    }
+  }
+  // analogous to the [in] case; here no direction specified
+  else
+  {
+    if (loc_doc.isEmpty() || (loc_doc.lower() == argName.lower()))
+    {
+      current=tmp_entry;
+      return;
+    }
+    handleCommentBlock(QCString("\n\n@param ") + directionParam[dir1] + " " + 
+                       argName + " " + loc_doc,brief);
+  }
+
+  // reset current back to the part inside the routine
   current=tmp_entry;
 }
 

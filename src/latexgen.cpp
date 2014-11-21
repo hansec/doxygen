@@ -36,30 +36,7 @@
 #include "classlist.h"
 #include "namespacedef.h"
 #include "filename.h"
-
-static const char doxygenLatexStyle[] =
-#include "doxygen.sty.h"
-;
-
-//static QCString filterTitle(const char *s)
-//{
-//  QCString tmp=s,result;
-//  uint i;for (i=0;i<tmp.length();i++)
-//  {
-//    char c=tmp.at(i);
-//    switch(c)
-//    {
-//      case '#': result+="\\#";  break;
-//      case '"': result+="\\\""; break;
-//      case '%': result+="\\%";  break;
-//      case '[': result+="{";    break;
-//      case ']': result+="}";    break;
-//      default:  result+=c;      break;
-//    }
-//  }
-//  return result;  
-//}
-
+#include "resourcemgr.h"
 
 
 LatexGenerator::LatexGenerator() : OutputGenerator()
@@ -186,6 +163,8 @@ static void writeMakeBat()
     exit(1);
   }
   FTextStream t(&file);
+  t << "set Dir_Old=%cd%\n";
+  t << "cd /D %~dp0\n\n";
   t << "del /s /f *.ps *.dvi *.aux *.toc *.idx *.ind *.ilg *.log *.out *.brf *.blg *.bbl refman.pdf\n\n";
   if (!Config_getBool("USE_PDFLATEX")) // use plain old latex
   {
@@ -246,6 +225,8 @@ static void writeMakeBat()
     t << "endlocal\n";
     t << mkidx_command << " refman.idx\n";
     t << "pdflatex refman\n";
+    t << "cd /D %Dir_Old%\n";
+    t << "set Dir_Old=\n";
   }
 #endif
 }
@@ -286,6 +267,7 @@ static void writeDefaultHeaderPart1(FTextStream &t)
 
   // Load required packages
   t << "% Packages required by doxygen\n"
+       "\\usepackage{fixltx2e}\n" // for \textsubscript
        "\\usepackage{calc}\n"
        "\\usepackage{doxygen}\n"
        "\\usepackage{graphicx}\n"
@@ -293,7 +275,6 @@ static void writeDefaultHeaderPart1(FTextStream &t)
        "\\usepackage{makeidx}\n"
        "\\usepackage{multicol}\n"
        "\\usepackage{multirow}\n"
-       "\\usepackage{fixltx2e}\n" // for \textsubscript
        "\\PassOptionsToPackage{warn}{textcomp}\n"
        "\\usepackage{textcomp}\n"
        "\\usepackage[nointegrals]{wasysym}\n"
@@ -312,7 +293,6 @@ static void writeDefaultHeaderPart1(FTextStream &t)
   // Define default fonts
   t << "% Font selection\n"
        "\\usepackage[T1]{fontenc}\n"
-       "\\usepackage{mathptmx}\n"
        "\\usepackage[scaled=.90]{helvet}\n"
        "\\usepackage{courier}\n"
        "\\usepackage{amssymb}\n"
@@ -521,7 +501,7 @@ static void writeDefaultHeaderPart3(FTextStream &t)
 
 static void writeDefaultStyleSheet(FTextStream &t)
 {
-  t << doxygenLatexStyle;
+  t << ResourceMgr::instance().getAsString("doxygen.sty");
 }
 
 static void writeDefaultFooter(FTextStream &t)
@@ -539,8 +519,10 @@ static void writeDefaultFooter(FTextStream &t)
   else
     unit = "chapter";
   t << "% Index\n"
+       "\\backmatter\n"
        "\\newpage\n"
        "\\phantomsection\n"
+       "\\clearemptydoublepage\n"
        "\\addcontentsline{toc}{" << unit << "}{" << theTranslator->trRTFGeneralIndex() << "}\n"
        "\\printindex\n"
        "\n"
@@ -1256,7 +1238,7 @@ void LatexGenerator::startTitleHead(const char *fileName)
   static bool usePDFLatex   = Config_getBool("USE_PDFLATEX");
   if (usePDFLatex && pdfHyperlinks && fileName)
   {
-    t << "\\hypertarget{" << stripPath(fileName) << "}{";
+    t << "\\hypertarget{" << stripPath(fileName) << "}{}";
   }
   if (Config_getBool("COMPACT_LATEX")) 
   {
@@ -1270,8 +1252,6 @@ void LatexGenerator::startTitleHead(const char *fileName)
 
 void LatexGenerator::endTitleHead(const char *fileName,const char *name)
 {
-  static bool pdfHyperlinks = Config_getBool("PDF_HYPERLINKS");
-  static bool usePDFLatex   = Config_getBool("USE_PDFLATEX");
   t << "}" << endl;
   if (name)
   {
@@ -1280,10 +1260,6 @@ void LatexGenerator::endTitleHead(const char *fileName,const char *name)
     t << "@{";
     escapeMakeIndexChars(name);
     t << "}}" << endl;
-  }
-  if (usePDFLatex && pdfHyperlinks && fileName)
-  {
-    t << "}" << endl;
   }
 }
 
@@ -1424,18 +1400,12 @@ void LatexGenerator::startDoxyAnchor(const char *fName,const char *,
     t << "\\hypertarget{";
     if (fName) t << stripPath(fName);
     if (anchor) t << "_" << anchor;
-    t << "}{";
+    t << "}{}";
   }
 }
 
 void LatexGenerator::endDoxyAnchor(const char *fName,const char *anchor)
 {
-  static bool pdfHyperlinks = Config_getBool("PDF_HYPERLINKS");
-  static bool usePDFLatex   = Config_getBool("USE_PDFLATEX");
-  if (usePDFLatex && pdfHyperlinks)
-  {
-    t << "}";
-  }
   t << "\\label{";
   if (fName) t << stripPath(fName);
   if (anchor) t << "_" << anchor;
@@ -1810,7 +1780,7 @@ void LatexGenerator::startDotGraph()
 
 void LatexGenerator::endDotGraph(const DotClassGraph &g) 
 {
-  g.writeGraph(t,EPS,Config_getString("LATEX_OUTPUT"),fileName,relPath);
+  g.writeGraph(t,GOF_EPS,EOF_LaTeX,Config_getString("LATEX_OUTPUT"),fileName,relPath);
 }
 
 void LatexGenerator::startInclDepGraph() 
@@ -1819,7 +1789,7 @@ void LatexGenerator::startInclDepGraph()
 
 void LatexGenerator::endInclDepGraph(const DotInclDepGraph &g) 
 {
-  g.writeGraph(t,EPS,Config_getString("LATEX_OUTPUT"),fileName,relPath);
+  g.writeGraph(t,GOF_EPS,EOF_LaTeX,Config_getString("LATEX_OUTPUT"),fileName,relPath);
 }
 
 void LatexGenerator::startGroupCollaboration() 
@@ -1828,7 +1798,7 @@ void LatexGenerator::startGroupCollaboration()
 
 void LatexGenerator::endGroupCollaboration(const DotGroupCollaboration &g) 
 {
-  g.writeGraph(t,EPS,Config_getString("LATEX_OUTPUT"),fileName,relPath);
+  g.writeGraph(t,GOF_EPS,EOF_LaTeX,Config_getString("LATEX_OUTPUT"),fileName,relPath);
 }
 
 void LatexGenerator::startCallGraph() 
@@ -1837,7 +1807,7 @@ void LatexGenerator::startCallGraph()
 
 void LatexGenerator::endCallGraph(const DotCallGraph &g) 
 {
-  g.writeGraph(t,EPS,Config_getString("LATEX_OUTPUT"),fileName,relPath);
+  g.writeGraph(t,GOF_EPS,EOF_LaTeX,Config_getString("LATEX_OUTPUT"),fileName,relPath);
 }
 
 void LatexGenerator::startDirDepGraph() 
@@ -1846,7 +1816,7 @@ void LatexGenerator::startDirDepGraph()
 
 void LatexGenerator::endDirDepGraph(const DotDirDeps &g) 
 {
-  g.writeGraph(t,EPS,Config_getString("LATEX_OUTPUT"),fileName,relPath);
+  g.writeGraph(t,GOF_EPS,EOF_LaTeX,Config_getString("LATEX_OUTPUT"),fileName,relPath);
 }
 
 void LatexGenerator::startDescription() 

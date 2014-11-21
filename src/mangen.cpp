@@ -56,7 +56,7 @@ static QCString getExtension()
         ext = ext.mid(1);
       }
     }
-    if (ext.at(0)<='0' || ext.at(0)>='9')
+    if (ext.at(0)<'0' || ext.at(0)>'9')
     {
       ext.prepend("3");
     }
@@ -194,6 +194,7 @@ void ManGenerator::endTitleHead(const char *,const char *name)
   t << ".SH NAME" << endl;
   t << name << " \\- ";
   firstCol=FALSE;
+  paragraph=TRUE;
   inHeader=TRUE;
 }
 
@@ -340,7 +341,7 @@ void ManGenerator::codify(const char *str)
                     break;
         case '\n':  t << "\n"; firstCol=TRUE; col=0; break;
         case '\\':  t << "\\"; col++; break;
-        case '\"':  c = '\''; // no break!
+        case '\"':  // no break!
         default:    p=writeUtf8Char(t,p-1); firstCol=FALSE; col++; break;
       }
     }
@@ -828,10 +829,4 @@ void ManGenerator::endLabels()
 
 void ManGenerator::endHeaderSection()
 {
-  if (!firstCol) 
-  { 
-    t<< endl; firstCol=TRUE; 
-  }
 }
-
-

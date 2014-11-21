@@ -264,8 +264,9 @@ void writePageRef(OutputDocInterface &od,const char *cn,const char *mn)
  */
 QCString generateMarker(int id)
 {
-  QCString result;
-  result.sprintf("@%d",id);
+  const int maxMarkerStrLen = 20;
+  char result[maxMarkerStrLen];
+  qsnprintf(result,maxMarkerStrLen,"@%d",id);
   return result;
 }
 
@@ -1667,10 +1668,11 @@ QCString removeRedundantWhiteSpace(const QCString &s)
   uint l=s.length();
   uint csp=0;
   uint vsp=0;
+  char c;
   for (i=0;i<l;i++)
   {
 nextChar:
-    char c=s.at(i);
+    c=s.at(i);
 
     // search for "const"
     if (csp<6 && c==constScope[csp] && // character matches substring "const"
@@ -1705,7 +1707,7 @@ nextChar:
         if (cc=='\\') // escaped character
         { 
           growBuf.addChar(s.at(i+1));
-          i+=2; 
+          i+=2;
         }
         else if (cc=='"') // end of string
         { i++; goto nextChar; }
@@ -1737,14 +1739,16 @@ nextChar:
       growBuf.addChar(',');
       growBuf.addChar(' ');
     }
-    else if (i>0 && 
-         ((isId(s.at(i)) && s.at(i-1)==')') || 
-          (s.at(i)=='\''  && s.at(i-1)==' ')
+    else if (i>0 &&
+         (
+          (s.at(i-1)==')' && isId(c))
+          ||
+          (c=='\''  && s.at(i-1)==' ')
          )
         )
     {
       growBuf.addChar(' ');
-      growBuf.addChar(s.at(i));
+      growBuf.addChar(c);
     }
     else if (c=='t' && csp==5 /*&& (i<5 || !isId(s.at(i-5)))*/ &&
              !(isId(s.at(i+1)) /*|| s.at(i+1)==' '*/ || 
@@ -1798,8 +1802,9 @@ nextChar:
           ) 
         )
     {
+      if (c=='\t') c=' ';
       if (c=='*' || c=='&' || c=='@' || c=='$')
-      {  
+      {
         //uint rl=result.length();
         uint rl=growBuf.getPos();
         if ((rl>0 && (isId(growBuf.at(rl-1)) || growBuf.at(rl-1)=='>')) &&
@@ -1827,8 +1832,8 @@ nextChar:
       }
     }
   }
-  //printf("removeRedundantWhiteSpace(`%s')=`%s'\n",s.data(),result.data());
   growBuf.addChar(0);
+  //printf("removeRedundantWhiteSpace(`%s')=`%s'\n",s.data(),growBuf.get());
   //result.resize(resultPos);
   return growBuf.get();
 }  
@@ -1837,7 +1842,7 @@ nextChar:
  * Returns the position in the string where a function parameter list
  * begins, or -1 if one is not found.
  */
-int findParameterList(const QString &name)
+int findParameterList(const QCString &name)
 {
   int pos=-1;
   int templateDepth=0;
@@ -1874,7 +1879,8 @@ int findParameterList(const QString &name)
       else
       {
         int bp = bracePos>0 ? name.findRev('(',bracePos-1) : -1;
-        return bp==-1 ? bracePos : bp;
+        // bp test is to allow foo(int(&)[10]), but we need to make an exception for operator()
+        return bp==-1 || (bp>=8 && name.mid(bp-8,10)=="operator()") ? bracePos : bp;
       }
     }
   } while (pos!=-1);
@@ -2185,7 +2191,7 @@ QCString argListToString(ArgumentList *al,bool useCanonicalType,bool showDefVals
   return removeRedundantWhiteSpace(result);
 }
 
-QCString tempArgListToString(ArgumentList *al)
+QCString tempArgListToString(ArgumentList *al,SrcLangExt lang)
 {
   QCString result;
   if (al==0) return result;
@@ -2203,6 +2209,10 @@ QCString tempArgListToString(ArgumentList *al)
       else if (a->type.left(3)=="in") // C# contravariance
       {
         result+="in ";
+      }
+      if (lang==SrcLangExt_Java || lang==SrcLangExt_CSharp)
+      {
+        result+=a->type+" ";
       }
       result+=a->name;
     }
@@ -3227,7 +3237,7 @@ bool matchArguments(ArgumentList *srcAl,ArgumentList *dstAl,
   // all arguments.
   ArgumentListIterator srcAli(*srcAl),dstAli(*dstAl);
   Argument *srcA,*dstA;
-  for (;(srcA=srcAli.current(),dstA=dstAli.current());++srcAli,++dstAli)
+  for (;(srcA=srcAli.current()) && (dstA=dstAli.current());++srcAli,++dstAli)
   { 
     if (!matchArgument(srcA,dstA,className,namespaceName,
           usingNamespaces,usingClasses))
@@ -3660,7 +3670,7 @@ bool matchArguments2(Definition *srcScope,FileDef *srcFileScope,ArgumentList *sr
   // all arguments.
   ArgumentListIterator srcAli(*srcAl),dstAli(*dstAl);
   Argument *srcA,*dstA;
-  for (;(srcA=srcAli.current(),dstA=dstAli.current());++srcAli,++dstAli)
+  for (;(srcA=srcAli.current()) && (dstA=dstAli.current());++srcAli,++dstAli)
   { 
     if (!matchArgument2(srcScope,srcFileScope,srcA,
           dstScope,dstFileScope,dstA)
@@ -3690,7 +3700,7 @@ void mergeArguments(ArgumentList *srcAl,ArgumentList *dstAl,bool forceNameOverwr
 
   ArgumentListIterator srcAli(*srcAl),dstAli(*dstAl);
   Argument *srcA,*dstA;
-  for (;(srcA=srcAli.current(),dstA=dstAli.current());++srcAli,++dstAli)
+  for (;(srcA=srcAli.current()) && (dstA=dstAli.current());++srcAli,++dstAli)
   {
     if (srcA->defval.isEmpty() && !dstA->defval.isEmpty())
     {
@@ -4904,8 +4914,10 @@ FileDef *findFileDef(const FileNameDict *fnDict,const char *n,bool &ambig)
   ambig=FALSE;
   if (n==0) return 0;
 
-  QCString key;
-  key.sprintf("%p:",fnDict);
+  const int maxAddrSize = 20;
+  char addr[maxAddrSize];
+  qsnprintf(addr,maxAddrSize,"%p:",fnDict);
+  QCString key = addr;
   key+=n;
 
   g_findFileDefCache.setAutoDelete(TRUE);
@@ -5016,6 +5028,41 @@ QCString showFileDefMatches(const FileNameDict *fnDict,const char *n)
       }
     }
   }
+  return result;
+}
+
+//----------------------------------------------------------------------
+
+/// substitute all occurrences of \a src in \a s by \a dst
+QCString substitute(const QCString &s,const QCString &src,const QCString &dst)
+{
+  if (s.isEmpty() || src.isEmpty()) return s;
+  const char *p, *q;
+  int srcLen = src.length();
+  int dstLen = dst.length();
+  int resLen;
+  if (srcLen!=dstLen)
+  {
+    int count;
+    for (count=0, p=s.data(); (q=strstr(p,src))!=0; p=q+srcLen) count++;
+    resLen = s.length()+count*(dstLen-srcLen);
+  }
+  else // result has same size as s
+  {
+    resLen = s.length();
+  }
+  QCString result(resLen+1);
+  char *r;
+  for (r=result.data(), p=s; (q=strstr(p,src))!=0; p=q+srcLen)
+  {
+    int l = (int)(q-p);
+    memcpy(r,p,l);
+    r+=l;
+    if (dst) memcpy(r,dst,dstLen);
+    r+=dstLen;
+  }
+  qstrcpy(r,p);
+  //printf("substitute(%s,%s,%s)->%s\n",s,src,dst,result.data());
   return result;
 }
 
@@ -5364,10 +5411,10 @@ void createSubDirs(QDir &d)
     int l1,l2;
     for (l1=0;l1<16;l1++)
     {
-      d.mkdir(QString().sprintf("d%x",l1));
+      d.mkdir(QCString().sprintf("d%x",l1));
       for (l2=0;l2<256;l2++)
       {
-        d.mkdir(QString().sprintf("d%x/d%02x",l1,l2));
+        d.mkdir(QCString().sprintf("d%x/d%02x",l1,l2));
       }
     }
   }
@@ -5600,6 +5647,11 @@ QCString convertToXML(const char *s)
       case '&':  growBuf.addStr("&amp;");  break;
       case '\'': growBuf.addStr("&apos;"); break; 
       case '"':  growBuf.addStr("&quot;"); break;
+      case  1: case  2: case  3: case  4: case  5: case  6: case  7: case  8:
+      case 11: case 12: case 13: case 14: case 15: case 16: case 17: case 18:
+      case 19: case 20: case 21: case 22: case 23: case 24: case 25: case 26:
+      case 27: case 28: case 29: case 30: case 31:
+        break; // skip invalid XML characters (see http://www.w3.org/TR/2000/REC-xml-20001006#NT-Char)
       default:   growBuf.addChar(c);       break;
     }
   }
@@ -6312,7 +6364,7 @@ PageDef *addRelatedPage(const char *name,const QCString &ptitle,
 
 void addRefItem(const QList<ListItemInfo> *sli,
     const char *key, 
-    const char *prefix, const char *name,const char *title,const char *args)
+    const char *prefix, const char *name,const char *title,const char *args,Definition *scope)
 {
   //printf("addRefItem(sli=%p,key=%s,prefix=%s,name=%s,title=%s,args=%s)\n",sli,key,prefix,name,title,args);
   if (sli && key && key[0]!='@') // check for @ to skip anonymous stuff (see bug427012)
@@ -6337,6 +6389,7 @@ void addRefItem(const QList<ListItemInfo> *sli,
         ASSERT(item!=0);
 
         item->prefix = prefix;
+        item->scope  = scope;
         item->name   = name;
         item->title  = title;
         item->args   = args;
@@ -6348,26 +6401,42 @@ void addRefItem(const QList<ListItemInfo> *sli,
   }
 }
 
-void addGroupListToTitle(OutputList &ol,Definition *d)
+bool recursivelyAddGroupListToTitle(OutputList &ol,Definition *d,bool root)
 {
   GroupList *groups = d->partOfGroups();
   if (groups) // write list of group to which this definition belongs
   {
-    ol.pushGeneratorState();
-    ol.disableAllBut(OutputGenerator::Html);
-    ol.writeString("<div class=\"ingroups\">");
+    if (root)
+    {
+      ol.pushGeneratorState();
+      ol.disableAllBut(OutputGenerator::Html);
+      ol.writeString("<div class=\"ingroups\">");
+    }
     GroupListIterator gli(*groups);
     GroupDef *gd;
-    bool first=TRUE;
+    bool first=true;
     for (gli.toFirst();(gd=gli.current());++gli)
     {
-      if (!first) { ol.writeString(" &#124; "); } else first=FALSE; 
-      ol.writeObjectLink(gd->getReference(),
-          gd->getOutputFileBase(),0,gd->groupTitle());
+      if (recursivelyAddGroupListToTitle(ol, gd, FALSE))
+      {
+        ol.writeString(" &raquo; ");
+      }
+      if (!first) { ol.writeString(" &#124; "); } else first=FALSE;
+      ol.writeObjectLink(gd->getReference(),gd->getOutputFileBase(),0,gd->groupTitle());
     }
-    ol.writeString("</div>");
-    ol.popGeneratorState();
+    if (root)
+    {
+      ol.writeString("</div>");
+      ol.popGeneratorState();
+    }
+    return true;
   }
+  return false;
+}
+
+void addGroupListToTitle(OutputList &ol,Definition *d)
+{
+  recursivelyAddGroupListToTitle(ol,d,TRUE);
 }
 
 void filterLatexString(FTextStream &t,const char *str,
@@ -6699,15 +6768,37 @@ void initDefaultExtensionMapping()
 {
   g_extLookup.setAutoDelete(TRUE);
   //                  extension      parser id
-  updateLanguageMapping(".idl",      "idl"); 
-  updateLanguageMapping(".ddl",      "idl"); 
-  updateLanguageMapping(".odl",      "idl"); 
+  updateLanguageMapping(".dox",      "c");
+  updateLanguageMapping(".txt",      "c");
+  updateLanguageMapping(".doc",      "c");
+  updateLanguageMapping(".c",        "c");
+  updateLanguageMapping(".C",        "c");
+  updateLanguageMapping(".cc",       "c");
+  updateLanguageMapping(".CC",       "c");
+  updateLanguageMapping(".cxx",      "c");
+  updateLanguageMapping(".cpp",      "c");
+  updateLanguageMapping(".c++",      "c");
+  updateLanguageMapping(".ii",       "c");
+  updateLanguageMapping(".ixx",      "c");
+  updateLanguageMapping(".ipp",      "c");
+  updateLanguageMapping(".i++",      "c");
+  updateLanguageMapping(".inl",      "c");
+  updateLanguageMapping(".h",        "c");
+  updateLanguageMapping(".H",        "c");
+  updateLanguageMapping(".hh",       "c");
+  updateLanguageMapping(".HH",       "c");
+  updateLanguageMapping(".hxx",      "c");
+  updateLanguageMapping(".hpp",      "c");
+  updateLanguageMapping(".h++",      "c");
+  updateLanguageMapping(".idl",      "idl");
+  updateLanguageMapping(".ddl",      "idl");
+  updateLanguageMapping(".odl",      "idl");
   updateLanguageMapping(".java",     "java");
-  updateLanguageMapping(".as",       "javascript"); 
+  updateLanguageMapping(".as",       "javascript");
   updateLanguageMapping(".js",       "javascript");
   updateLanguageMapping(".cs",       "csharp");
   updateLanguageMapping(".d",        "d");
-  updateLanguageMapping(".php",      "php"); 
+  updateLanguageMapping(".php",      "php");
   updateLanguageMapping(".php4",     "php");
   updateLanguageMapping(".php5",     "php");
   updateLanguageMapping(".inc",      "php");
@@ -8219,5 +8310,13 @@ void convertProtectionLevel(
   }
   //printf("convertProtectionLevel(type=%d prot=%d): %d,%d\n",
   //    inListType,inProt,*outListType1,*outListType2);
+}
+
+bool mainPageHasTitle()
+{
+  if (Doxygen::mainPage==0) return FALSE;
+  if (Doxygen::mainPage->title().isEmpty()) return FALSE;
+  if (Doxygen::mainPage->title().lower()=="notitle") return FALSE;
+  return TRUE;
 }
 
