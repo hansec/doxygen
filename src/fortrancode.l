@@ -35,7 +35,6 @@
 #include <qregexp.h>
 #include <qdir.h>
 #include <qstringlist.h>
-#include <iostream>
 #include "entry.h"
 #include "doxygen.h"
 #include "message.h"
@@ -461,56 +460,37 @@ static bool getFortranDefs(const QCString &memberName, const QCString &moduleNam
                            MemberDef *&md, UseSDict *usedict=0)
 {
   if (memberName.isEmpty()) return FALSE; /* empty name => nothing to link */
-  //std::cout << "=== Searching for " << memberName << "\n";
 
   // look in local variables
   QListIterator<Scope> it(scopeStack);
   Scope *scope;
   QCString scopeName = "";
-  for (it.toLast();(scope=it.current());--it)
+  for (it.toLast(); (scope=it.current()); --it)
   {
     if (scope->localVars.find(memberName)) {
       scopeName=scope->name;
-      //std::cout << "=== Searching for " << memberName << " in scope " << scopeName << "\n";
       break;
     }
   }
 
   // search for function
-  MemberName *mn_funs = Doxygen::functionNameSDict->find(memberName);
-  MemberName *mn_mems = Doxygen::memberNameSDict->find(memberName);
+  MemberName *mn = Doxygen::functionNameSDict->find(memberName);
 
   MemberListIterator *mli;
   for (int i=0; i<2; i++)
    {
-    if (i==0) {
-      if (!mn_funs)
-      {
+    if (i==1) // search for members
+      mn = Doxygen::memberNameSDict->find(memberName);
+    if (!mn)
       continue;
-      }
-      else
-      {
-        mli = new MemberListIterator(*mn_funs);
-      }
-    }
-    else if (i==1)
-    {
-      if (!mn_mems)
-      {
-      continue;
-      }
-      else
-      {
-        mli = new MemberListIterator(*mn_mems);
-      }
-    }
-      for (mli->toFirst();(md=mli->current());++*mli) // all found functions with given name
+    mli = new MemberListIterator(*mn);
+    for (mli->toFirst(); (md=mli->current()); ++*mli) // all found functions with given name
       {
         FileDef  *fd=md->getFileDef();
         GroupDef *gd=md->getGroupDef();
         ClassDef *cd=md->getClassDef();
 
-        if ((cd && cd->isLinkable())) {
+        if (cd && cd->isLinkable()) {
           if (scopeName == cd->name()) { // Found in current type definition
             return TRUE;
           }
@@ -713,19 +693,15 @@ static void addLocalVar(const QCString &varName)
     scopeStack.getLast()->localVars.insert(varName, (void*)1);
 }
 
-static void setScopeName(const QCString &name) 
+static void setScopeName(const QCString &name)
 {
   // Concatenate nested scopes
   QListIterator<Scope> it(scopeStack);
   Scope *scope;
   QCString scopeName = name;
-  bool addName = FALSE;
-  for (it.toLast();(scope=it.current());--it)
+  for (it.toLast(); (scope=it.current()); --it)
   {
-    if (addName) {
-      if (scope->name!=0)scopeName=scope->name+"::"+scopeName;
-    }
-    addName=TRUE;
+    if (scope->name!=0)scopeName=scope->name+"::"+scopeName;
   }
   scopeStack.getLast()->name=scopeName;
 }
@@ -788,6 +764,7 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
 %x Start
 %x SubCall
 %x FuncDef
+%x ExtDecl
 %x ClassName
 %x ClassVar
 %x Subprog
@@ -924,8 +901,26 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
             BEGIN(ClassName);
             currentClass="class";
           }
+<ClassName>"extends"{BS}"("       {
+  yy_push_state(YY_START);
+  BEGIN(ExtDecl);
+  startFontClass("keyword");
+  codifyLines(yytext);
+  endFontClass();
+}
+<ExtDecl>{ID}                          { // link type
+            g_insideBody=TRUE;
+            generateLink(*g_code,yytext);
+            g_insideBody=FALSE;
+                                        }
+<ExtDecl>")"                           {
+            startFontClass("keyword");
+            g_code->codify(yytext);
+            endFontClass();
+            yy_pop_state();
+                                        }
 <ClassName>{ID}               	        {
-	                                  if (currentModule == "module")
+                                    if (currentModule == "module")
                                           {
                                             currentModule=yytext;
                                             currentModule = currentModule.lower();
@@ -935,8 +930,8 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
                                           {
                                             currentClass = yytext;
                                             currentClass = currentClass.lower();
-                                          setScopeName(currentClass);
-                                        }
+                                            setScopeName(currentClass);
+                                          }
 					  generateLink(*g_code,yytext);
                                           yy_pop_state();
  					}
@@ -1021,13 +1016,13 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
 					  g_code->codify(yytext);
 					  endFontClass();
   					}
-<Declaration>{ID}                       { // local var
+<Declaration>{ID}/{BS}([()]|\n|!|"=")                       { // local var
                                           if ((g_currentMemberDef && g_currentMemberDef->isFunction() && bracketCount==0) || currentClass != 0)
                                           {
                                             addLocalVar(yytext);
                                           }
                                           generateLink(*g_code, yytext);
-					}
+          }
 <Declaration>{BS}("=>"|"="){BS}                        { // Procedure binding
             BEGIN(DeclarationBinding);
             g_code->codify(yytext);
@@ -1312,7 +1307,11 @@ void parseFortranCode(CodeOutputInterface &od,const char *className,const QCStri
   {
     g_exampleFile = convertNameToFile(g_exampleName+"-example");
   }
-  // Clear scopeStack
+  /* Clear scopeStack when parsing begins on a new file
+  *
+  *  This is simply a catch for cases where scopes are not properly
+  *  tracked so that the stack does not grow out of control.
+  */
   currentModule = 0;
   currentClass = 0;
   while (!scopeStack.isEmpty())
