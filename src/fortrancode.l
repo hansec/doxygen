@@ -35,6 +35,7 @@
 #include <qregexp.h>
 #include <qdir.h>
 #include <qstringlist.h>
+#include <iostream>
 #include "entry.h"
 #include "doxygen.h"
 #include "message.h"
@@ -103,6 +104,7 @@ class Scope
   public:
     QStringList useNames; //!< contains names of used modules
     QDict<void> localVars; //!< contains names of local variables
+    QCString name; //!< Scope name
 
     Scope() : localVars(7, FALSE /*caseSensitive*/) {}
 };
@@ -459,31 +461,60 @@ static bool getFortranDefs(const QCString &memberName, const QCString &moduleNam
                            MemberDef *&md, UseSDict *usedict=0)
 {
   if (memberName.isEmpty()) return FALSE; /* empty name => nothing to link */
+  //std::cout << "=== Searching for " << memberName << "\n";
 
   // look in local variables
   QListIterator<Scope> it(scopeStack);
   Scope *scope;
+  QCString scopeName = "";
   for (it.toLast();(scope=it.current());--it)
   {
-    if (scope->localVars.find(memberName))
-      return FALSE;
+    if (scope->localVars.find(memberName)) {
+      scopeName=scope->name;
+      //std::cout << "=== Searching for " << memberName << " in scope " << scopeName << "\n";
+      break;
+    }
   }
 
   // search for function
-  MemberName *mn = Doxygen::functionNameSDict->find(memberName);
-  if (!mn)
-  {
-    mn = Doxygen::memberNameSDict->find(memberName);
-  }
+  MemberName *mn_funs = Doxygen::functionNameSDict->find(memberName);
+  MemberName *mn_mems = Doxygen::memberNameSDict->find(memberName);
 
-  if (mn) // name is known
-  {
-      MemberListIterator mli(*mn);
-      for (mli.toFirst();(md=mli.current());++mli) // all found functions with given name
+  MemberListIterator *mli;
+  for (int i=0; i<2; i++)
+   {
+    if (i==0) {
+      if (!mn_funs)
+      {
+      continue;
+      }
+      else
+      {
+        mli = new MemberListIterator(*mn_funs);
+      }
+    }
+    else if (i==1)
+    {
+      if (!mn_mems)
+      {
+      continue;
+      }
+      else
+      {
+        mli = new MemberListIterator(*mn_mems);
+      }
+    }
+      for (mli->toFirst();(md=mli->current());++*mli) // all found functions with given name
       {
         FileDef  *fd=md->getFileDef();
         GroupDef *gd=md->getGroupDef();
         ClassDef *cd=md->getClassDef();
+
+        if ((cd && cd->isLinkable())) {
+          if (scopeName == cd->name()) { // Found in current type definition
+            return TRUE;
+          }
+        }
 
  //cout << "found link with same name: " << fd->fileName() << "  " <<  memberName;
  //if (md->getNamespaceDef() != 0) cout << " in namespace " << md->getNamespaceDef()->name();cout << endl;
@@ -647,6 +678,7 @@ static void startScope()
 {
   DBG_CTX((stderr, "===> startScope %s",yytext));
   Scope *scope = new Scope;
+  scope->name = 0;
   scopeStack.append(scope);
 }
 
@@ -679,6 +711,23 @@ static void addLocalVar(const QCString &varName)
 {
   if (!scopeStack.isEmpty())
     scopeStack.getLast()->localVars.insert(varName, (void*)1);
+}
+
+static void setScopeName(const QCString &name) 
+{
+  // Concatenate nested scopes
+  QListIterator<Scope> it(scopeStack);
+  Scope *scope;
+  QCString scopeName = name;
+  bool addName = FALSE;
+  for (it.toLast();(scope=it.current());--it)
+  {
+    if (addName) {
+      if (scope->name!=0)scopeName=scope->name+"::"+scopeName;
+    }
+    addName=TRUE;
+  }
+  scopeStack.getLast()->name=scopeName;
 }
 
 //----------------------------------------------------------------------------
@@ -879,7 +928,14 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
                                           {
                                             currentModule=yytext;
                                             currentModule = currentModule.lower();
+                                            setScopeName(currentModule);
                                           }
+                                    if(currentClass=="class")
+                                          {
+                                            currentClass = yytext;
+                                            currentClass = currentClass.lower();
+                                          setScopeName(currentClass);
+                                        }
 					  generateLink(*g_code,yytext);
                                           yy_pop_state();
  					}
@@ -916,6 +972,7 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
 <Subprog>{ID}                           { // subroutine/function name
                                           DBG_CTX((stderr, "===> start subprogram %s\n", yytext));
 					  startScope();
+            setScopeName(yytext);
 					  generateLink(*g_code,yytext);
                                         }
 <Subprog>"(".*                          { // ignore rest of line 
@@ -964,15 +1021,11 @@ PREFIX    (RECURSIVE{BS_}|IMPURE{BS_}|PURE{BS_}|ELEMENTAL{BS_}){0,3}(RECURSIVE|I
 					  endFontClass();
   					}
 <Declaration>{ID}                       { // local var
-                                          if (g_currentMemberDef && g_currentMemberDef->isFunction() && bracketCount==0)
+                                          if ((g_currentMemberDef && g_currentMemberDef->isFunction() && bracketCount==0) || currentClass != 0)
                                           {
-                                            g_code->codify(yytext);
                                             addLocalVar(yytext);
                                           }
-                                           else
-                                          {
-                                            generateLink(*g_code, yytext);
-                                          }
+                                          generateLink(*g_code, yytext);
 					}
 <Declaration>[(]			{ // start of array specification
 					  bracketCount++;
@@ -1249,6 +1302,13 @@ void parseFortranCode(CodeOutputInterface &od,const char *className,const QCStri
   if (!g_exampleName.isEmpty())
   {
     g_exampleFile = convertNameToFile(g_exampleName+"-example");
+  }
+  // Clear scopeStack
+  currentModule = 0;
+  currentClass = 0;
+  while (!scopeStack.isEmpty())
+  {
+    endScope();
   }
   g_includeCodeFragment = inlineFragment;
   startCodeLine();
