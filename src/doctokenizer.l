@@ -321,9 +321,9 @@ static int yyread(char *buf,int max_size)
 }
 
 //--------------------------------------------------------------------------
-#define REAL_YY_DECL int doctokenizerYYlex (void)
-#define YY_DECL static int local_doctokinizer(void)
-#define LOCAL_YY_DECL local_doctokinizer()
+//#define REAL_YY_DECL int doctokenizerYYlex (void)
+//#define YY_DECL static int local_doctokinizer(void)
+//#define LOCAL_YY_DECL local_doctokinizer()
 
 %}
 
@@ -859,14 +859,28 @@ REFWORD   {LABELID}|{REFWORD2}|{REFWORD3}|{REFWORD4}
 <St_Msc>.              { /* msc text */
   			 g_token->verb+=yytext;
   		       }
-<St_PlantUMLOpt>\n     {
-                         g_token->sectionId=g_token->sectionId.stripWhiteSpace();
-                         BEGIN(St_PlantUML);
+<St_PlantUMLOpt>{BLANK}*"{"[^}]*"}" { // case 1: file name is specified as {filename}
+                         g_token->sectionId = QCString(yytext).stripWhiteSpace();
+                         // skip curly brackets around the optional image name
+			 g_token->sectionId = g_token->sectionId.mid(1,g_token->sectionId.length()-2).stripWhiteSpace();
+                         return RetVal_OK;
                        }
-<St_PlantUMLOpt>["{}]   { // skip curly brackets or quotes around the optional image name
+<St_PlantUMLOpt>{BLANK}*{FILEMASK}{BLANK}+/{ID}"=" { // case 2: plain file name specified followed by an attribute
+                         g_token->sectionId = QCString(yytext).stripWhiteSpace();
+                         return RetVal_OK;
+                       }
+<St_PlantUMLOpt>{BLANK}*{FILEMASK}{BLANK}+/"\"" { // case 3: plain file name specified followed by a quoted title
+                         g_token->sectionId = QCString(yytext).stripWhiteSpace();
+                         return RetVal_OK;
+                       }
+<St_PlantUMLOpt>{BLANK}*{FILEMASK}{BLANK}*/\n { // case 4: plain file name specified without title or attributes
+                         g_token->sectionId = QCString(yytext).stripWhiteSpace();
+                         return RetVal_OK;
                        }
 <St_PlantUMLOpt>.      {
-                         g_token->sectionId += yytext;
+                         g_token->sectionId = "";
+                         unput(*yytext);
+                         return RetVal_OK;
                        }
 <St_PlantUML>{CMD}"enduml"  {
                          return RetVal_OK;
@@ -878,7 +892,7 @@ REFWORD   {LABELID}|{REFWORD2}|{REFWORD3}|{REFWORD4}
   		       }
 <St_Title>"\""	       { // quoted title
   			 BEGIN(St_TitleQ);
-  		       } 
+  		       }
 <St_Title>[ \t]+       {
                          g_token->chars=yytext;
   			 return TK_WHITESPACE;
@@ -902,6 +916,13 @@ REFWORD   {LABELID}|{REFWORD2}|{REFWORD3}|{REFWORD4}
                          g_token->name = yytext+1;
 			 g_token->paramDir=TokenInfo::Unspecified;
                          return TK_COMMAND;
+                       }
+<St_TitleN>{ID}"="     { /* attribute */
+                         if (yytext[0]=='%') // strip % if present
+			   g_token->name = &yytext[1];
+			 else
+                           g_token->name = yytext;
+			 return TK_WORD;
                        }
 <St_TitleN>{WORD1}     |
 <St_TitleN>{WORD2}     { /* word */
@@ -948,8 +969,7 @@ REFWORD   {LABELID}|{REFWORD2}|{REFWORD3}|{REFWORD4}
                        }
 <St_TitleA>{BLANK}*{ID}{BLANK}*"="{BLANK}* { // title attribute
   			 g_token->name = yytext;
-			 g_token->name = g_token->name.left(
-			       g_token->name.find('=')).stripWhiteSpace();
+			 g_token->name = g_token->name.left(g_token->name.find('=')).stripWhiteSpace();
   			 BEGIN(St_TitleV);
   		       }
 <St_TitleV>[^ \t\r\n]+ { // attribute value
@@ -1258,7 +1278,7 @@ REFWORD   {LABELID}|{REFWORD2}|{REFWORD3}|{REFWORD4}
 			 return TK_COMMAND;
                        }
 <*>.                   { 
-                         warn(g_fileName,yylineno,"Unexpected character `%s'",yytext); 
+                         warn(g_fileName,yylineno,"Unexpected character `%s'",yytext);
 		       }
 %%
 
@@ -1375,11 +1395,17 @@ void doctokenizerYYsetStateMsc()
   BEGIN(St_Msc);
 }
 
-void doctokenizerYYsetStatePlantUML()
+void doctokenizerYYsetStatePlantUMLOpt()
 {
   g_token->verb="";
   g_token->sectionId="";
   BEGIN(St_PlantUMLOpt);
+}
+
+void doctokenizerYYsetStatePlantUML()
+{
+  g_token->verb="";
+  BEGIN(St_PlantUML);
 }
 
 void doctokenizerYYsetStateParam()
@@ -1479,13 +1505,13 @@ void doctokenizerYYendAutoList()
   g_autoListLevel--;
 }
 
-REAL_YY_DECL
-{
-  printlex(yy_flex_debug, TRUE, __FILE__, g_fileName);
-  int retval = LOCAL_YY_DECL;
-  printlex(yy_flex_debug, FALSE, __FILE__, g_fileName);
-  return retval;
-}
+//REAL_YY_DECL
+//{
+//  printlex(yy_flex_debug, TRUE, __FILE__, g_fileName);
+//  int retval = LOCAL_YY_DECL;
+//  printlex(yy_flex_debug, FALSE, __FILE__, g_fileName);
+//  return retval;
+//}
 #if !defined(YY_FLEX_SUBMINOR_VERSION) 
 extern "C" { // some bogus code to keep the compiler happy
     void doctokenizerYYdummy() { yy_flex_realloc(0,0); }
