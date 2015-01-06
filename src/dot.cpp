@@ -156,8 +156,6 @@ static const char svgZoomFooter[] =
 
 //--------------------------------------------------------------------
 
-static const int maxCmdLine = 40960;
-
 /*! mapping from protection levels to color names */
 static const char *normalEdgeColorMap[] =
 {
@@ -383,7 +381,7 @@ static bool convertMapFile(FTextStream &t,const char *mapName,
   while (!f.atEnd()) // foreach line
   {
     QCString buf(maxLineLen);
-    int numBytes = f.readLine(buf.data(),maxLineLen);
+    int numBytes = f.readLine(buf.rawData(),maxLineLen);
     buf[numBytes-1]='\0';
 
     if (buf.left(5)=="<area")
@@ -733,7 +731,7 @@ static bool checkAndUpdateMd5Signature(const QCString &baseName,
   {
     // read checksum
     QCString md5stored(33);
-    int bytesRead=f.readBlock(md5stored.data(),32);
+    int bytesRead=f.readBlock(md5stored.rawData(),32);
     md5stored[32]='\0';
     // compare checksum
     if (bytesRead==32 && md5==md5stored)
@@ -772,18 +770,18 @@ static bool checkDeliverables(const QCString &file1,
 
 //--------------------------------------------------------------------
 
-/** Class representing a list of DotNode objects. */
-class DotNodeList : public QList<DotNode>
+inline int DotNode::findParent( DotNode *n )
 {
-  public:
-    DotNodeList() : QList<DotNode>() {}
-   ~DotNodeList() {}
-  private:
-    int compareValues(const DotNode *n1,const DotNode *n2) const
-    {
-      return qstricmp(n1->m_label,n2->m_label);
-    }
-};
+  if ( !m_parents ) return -1;
+  return m_parents->find(n);
+}
+
+//--------------------------------------------------------------------
+
+int DotNodeList::compareValues(const DotNode *n1,const DotNode *n2) const
+{
+  return qstricmp(n1->m_label,n2->m_label);
+}
 
 //--------------------------------------------------------------------
 
@@ -988,7 +986,7 @@ bool DotFilePatcher::run()
   while (!fi.atEnd()) // foreach line
   {
     QCString line(maxLineLen);
-    int numBytes = fi.readLine(line.data(),maxLineLen);
+    int numBytes = fi.readLine(line.rawData(),maxLineLen);
     if (numBytes<=0)
     {
       break;
@@ -1135,11 +1133,12 @@ bool DotFilePatcher::run()
     while (!fi.atEnd()) // foreach line
     {
       QCString line(maxLineLen);
-      int numBytes = fi.readLine(line.data(),maxLineLen);
+      int numBytes = fi.readLine(line.rawData(),maxLineLen);
       if (numBytes<=0)
       {
         break;
       }
+      line.resize(numBytes+1);
       Map *map = m_maps.at(0); // there is only one 'map' for a SVG file
       t << replaceRef(line,map->relPath,map->urlOnly,map->context,"_top");
     }
@@ -1908,7 +1907,7 @@ void DotNode::write(FTextStream &t,
                     bool reNumber
                    )
 {
-  //printf("DotNode::write(%d) name=%s this=%p written=%d\n",distance,m_label.data(),this,m_written);
+  //printf("DotNode::write(%d) name=%s this=%p written=%d visible=%d\n",m_distance,m_label.data(),this,m_written,m_visible);
   if (m_written) return; // node already written to the output
   if (!m_visible) return; // node is not visible
   writeBox(t,gt,format,m_truncated==Truncated,reNumber);
@@ -1964,8 +1963,8 @@ void DotNode::writeXML(FTextStream &t,bool isClassGraph)
   if (!m_url.isEmpty())
   {
     QCString url(m_url);
-    char *refPtr = url.data();
-    char *urlPtr = strchr(url.data(),'$');
+    const char *refPtr = url.data();
+    char *urlPtr = strchr(url.rawData(),'$');
     if (urlPtr)
     {
       *urlPtr++='\0';
@@ -2032,8 +2031,8 @@ void DotNode::writeDocbook(FTextStream &t,bool isClassGraph)
   if (!m_url.isEmpty())
   {
     QCString url(m_url);
-    char *refPtr = url.data();
-    char *urlPtr = strchr(url.data(),'$');
+    const char *refPtr = url.data();
+    char *urlPtr = strchr(url.rawData(),'$');
     if (urlPtr)
     {
       *urlPtr++='\0';
@@ -2105,8 +2104,8 @@ void DotNode::writeDEF(FTextStream &t)
   if (!m_url.isEmpty())
   {
     QCString url(m_url);
-    char *refPtr = url.data();
-    char *urlPtr = strchr(url.data(),'$');
+    const char *refPtr = url.data();
+    char *urlPtr = strchr(url.rawData(),'$');
     if (urlPtr)
     {
       *urlPtr++='\0';
@@ -2261,12 +2260,106 @@ const DotNode *DotNode::findDocNode() const
 
 int DotGfxHierarchyTable::m_curNodeNumber;
 
+void DotGfxHierarchyTable::createGraph(DotNode *n,FTextStream &out,
+       const char *path,const char *fileName,int id) const
+{
+  QDir d(path);
+  QCString baseName;
+  QCString imgExt = Config_getEnum("DOT_IMAGE_FORMAT");
+  baseName.sprintf("inherit_graph_%d",id);
+  QCString imgName = baseName+"."+ imgExt;
+  QCString mapName = baseName+".map";
+  QCString absImgName = QCString(d.absPath().data())+"/"+imgName;
+  QCString absMapName = QCString(d.absPath().data())+"/"+mapName;
+  QCString absBaseName = QCString(d.absPath().data())+"/"+baseName;
+  QListIterator<DotNode> dnli2(*m_rootNodes);
+  DotNode *node;
+
+  // compute md5 checksum of the graph were are about to generate
+  QGString theGraph;
+  FTextStream md5stream(&theGraph);
+  writeGraphHeader(md5stream,theTranslator->trGraphicalHierarchy());
+  md5stream << "  rankdir=\"LR\";" << endl;
+  for (dnli2.toFirst();(node=dnli2.current());++dnli2)
+  {
+    if (node->m_subgraphId==n->m_subgraphId) 
+    {
+      node->clearWriteFlag();
+    }
+  }
+  for (dnli2.toFirst();(node=dnli2.current());++dnli2)
+  {
+    if (node->m_subgraphId==n->m_subgraphId) 
+    {
+      node->write(md5stream,DotNode::Hierarchy,GOF_BITMAP,FALSE,TRUE,TRUE,TRUE);
+    }
+  }
+  writeGraphFooter(md5stream);
+  resetReNumbering();
+  uchar md5_sig[16];
+  QCString sigStr(33);
+  MD5Buffer((const unsigned char *)theGraph.data(),theGraph.length(),md5_sig);
+  MD5SigToString(md5_sig,sigStr.rawData(),33);
+  bool regenerate=FALSE;
+  if (checkAndUpdateMd5Signature(absBaseName,sigStr) || 
+      !checkDeliverables(absImgName,absMapName))
+  {
+    regenerate=TRUE;
+    // image was new or has changed
+    QCString dotName=absBaseName+".dot";
+    QFile f(dotName);
+    if (!f.open(IO_WriteOnly)) return;
+    FTextStream t(&f);
+    t << theGraph;
+    f.close();
+    resetReNumbering();
+
+    DotRunner *dotRun = new DotRunner(dotName,d.absPath().data(),TRUE,absImgName);
+    dotRun->addJob(imgExt,absImgName);
+    dotRun->addJob(MAP_CMD,absMapName);
+    DotManager::instance()->addRun(dotRun);
+  }
+  else
+  {
+    removeDotGraph(absBaseName+".dot");
+  }
+  Doxygen::indexList->addImageFile(imgName);
+  // write image and map in a table row
+  QCString mapLabel = escapeCharsInString(n->m_label,FALSE);
+  if (imgExt=="svg") // vector graphics
+  {
+    if (regenerate || !writeSVGFigureLink(out,QCString(),baseName,absImgName))
+    {
+      if (regenerate)
+      {
+        DotManager::instance()->addSVGConversion(absImgName,QCString(),
+            FALSE,QCString(),FALSE,0);
+      }
+      int mapId = DotManager::instance()->addSVGObject(fileName,baseName,
+          absImgName,QCString());
+      out << "<!-- SVG " << mapId << " -->" << endl;
+    }
+  }
+  else // normal bitmap
+  {
+    out << "<img src=\"" << imgName << "\" border=\"0\" alt=\"\" usemap=\"#"
+      << mapLabel << "\"/>" << endl;
+
+    if (regenerate || !insertMapFile(out,absMapName,QCString(),mapLabel))
+    {
+      int mapId = DotManager::instance()->addMap(fileName,absMapName,QCString(),
+          FALSE,QCString(),mapLabel);
+      out << "<!-- MAP " << mapId << " -->" << endl;
+    }
+  }
+}
+
 void DotGfxHierarchyTable::writeGraph(FTextStream &out,
                       const char *path,const char *fileName) const
 {
   //printf("DotGfxHierarchyTable::writeGraph(%s)\n",name);
   //printf("m_rootNodes=%p count=%d\n",m_rootNodes,m_rootNodes->count());
-  
+
   if (m_rootSubgraphs->count()==0) return;
 
   QDir d(path);
@@ -2284,97 +2377,8 @@ void DotGfxHierarchyTable::writeGraph(FTextStream &out,
   int count=0;
   for (dnli.toFirst();(n=dnli.current());++dnli)
   {
-    QCString baseName;
-    QCString imgExt = Config_getEnum("DOT_IMAGE_FORMAT");
-    baseName.sprintf("inherit_graph_%d",count++);
-    //baseName = convertNameToFile(baseName);
-    QCString imgName = baseName+"."+ imgExt;
-    QCString mapName = baseName+".map";
-    QCString absImgName = QCString(d.absPath().data())+"/"+imgName;
-    QCString absMapName = QCString(d.absPath().data())+"/"+mapName;
-    QCString absBaseName = QCString(d.absPath().data())+"/"+baseName;
-    QListIterator<DotNode> dnli2(*m_rootNodes);
-    DotNode *node;
-
-    // compute md5 checksum of the graph were are about to generate
-    QGString theGraph;
-    FTextStream md5stream(&theGraph);
-    writeGraphHeader(md5stream,theTranslator->trGraphicalHierarchy());
-    md5stream << "  rankdir=\"LR\";" << endl;
-    for (dnli2.toFirst();(node=dnli2.current());++dnli2)
-    {
-      if (node->m_subgraphId==n->m_subgraphId) 
-      {
-        node->clearWriteFlag();
-      }
-    }
-    for (dnli2.toFirst();(node=dnli2.current());++dnli2)
-    {
-      if (node->m_subgraphId==n->m_subgraphId) 
-      {
-        node->write(md5stream,DotNode::Hierarchy,GOF_BITMAP,FALSE,TRUE,TRUE,TRUE);
-      }
-    }
-    writeGraphFooter(md5stream);
-    resetReNumbering();
-    uchar md5_sig[16];
-    QCString sigStr(33);
-    MD5Buffer((const unsigned char *)theGraph.data(),theGraph.length(),md5_sig);
-    MD5SigToString(md5_sig,sigStr.data(),33);
-    bool regenerate=FALSE;
-    if (checkAndUpdateMd5Signature(absBaseName,sigStr) || 
-        !checkDeliverables(absImgName,absMapName))
-    {
-      regenerate=TRUE;
-      // image was new or has changed
-      QCString dotName=absBaseName+".dot";
-      QFile f(dotName);
-      if (!f.open(IO_WriteOnly)) return;
-      FTextStream t(&f);
-      t << theGraph;
-      f.close();
-      resetReNumbering();
-
-      DotRunner *dotRun = new DotRunner(dotName,d.absPath().data(),TRUE,absImgName);
-      dotRun->addJob(imgExt,absImgName);
-      dotRun->addJob(MAP_CMD,absMapName);
-      DotManager::instance()->addRun(dotRun);
-    }
-    else
-    {
-      removeDotGraph(absBaseName+".dot");
-    }
-    Doxygen::indexList->addImageFile(imgName);
-    // write image and map in a table row
-    QCString mapLabel = escapeCharsInString(n->m_label,FALSE);
     out << "<tr><td>";
-    if (imgExt=="svg") // vector graphics
-    {
-      if (regenerate || !writeSVGFigureLink(out,QCString(),baseName,absImgName))
-      {
-        if (regenerate)
-        {
-          DotManager::instance()->addSVGConversion(absImgName,QCString(),
-                                                   FALSE,QCString(),FALSE,0);
-        }
-        int mapId = DotManager::instance()->addSVGObject(fileName,baseName,
-                                                         absImgName,QCString());
-        out << "<!-- SVG " << mapId << " -->" << endl;
-      }
-    }
-    else // normal bitmap
-    {
-      out << "<img src=\"" << imgName << "\" border=\"0\" alt=\"\" usemap=\"#"
-        << mapLabel << "\"/>" << endl;
-
-      if (regenerate || !insertMapFile(out,absMapName,QCString(),mapLabel))
-      {
-        int mapId = DotManager::instance()->addMap(fileName,absMapName,QCString(),
-                                                   FALSE,QCString(),mapLabel);
-        out << "<!-- MAP " << mapId << " -->" << endl;
-      }
-    }
-
+    createGraph(n,out,path,fileName,count++);
     out << "</td></tr>" << endl;
   }
   out << "</table>" << endl;
@@ -3023,7 +3027,7 @@ QCString computeMd5Signature(DotNode *root,
   uchar md5_sig[16];
   QCString sigStr(33);
   MD5Buffer((const unsigned char *)buf.data(),buf.length(),md5_sig);
-  MD5SigToString(md5_sig,sigStr.data(),33);
+  MD5SigToString(md5_sig,sigStr.rawData(),33);
   if (reNumber)
   {
     resetReNumbering();
@@ -3142,8 +3146,6 @@ QCString DotClassGraph::writeGraph(FTextStream &out,
     regenerate=TRUE;
     if (graphFormat==GOF_BITMAP) // run dot to create a bitmap image
     {
-      QCString dotArgs(maxCmdLine);
-
       DotRunner *dotRun = new DotRunner(absDotName,
                               d.absPath().data(),TRUE,absImgName);
       dotRun->addJob(imgExt,absImgName);
@@ -3501,7 +3503,6 @@ QCString DotInclDepGraph::writeGraph(FTextStream &out,
     if (graphFormat==GOF_BITMAP)
     {
       // run dot to create a bitmap image
-      QCString dotArgs(maxCmdLine);
       DotRunner *dotRun = new DotRunner(absDotName,d.absPath().data(),TRUE,absImgName);
       dotRun->addJob(imgExt,absImgName);
       if (generateImageMap) dotRun->addJob(MAP_CMD,absMapName);
@@ -3814,7 +3815,6 @@ QCString DotCallGraph::writeGraph(FTextStream &out, GraphOutputFormat graphForma
     if (graphFormat==GOF_BITMAP)
     {
       // run dot to create a bitmap image
-      QCString dotArgs(maxCmdLine);
       DotRunner *dotRun = new DotRunner(absDotName,d.absPath().data(),TRUE,absImgName);
       dotRun->addJob(imgExt,absImgName);
       if (generateImageMap) dotRun->addJob(MAP_CMD,absMapName);
@@ -3957,7 +3957,7 @@ QCString DotDirDeps::writeGraph(FTextStream &out,
   uchar md5_sig[16];
   QCString sigStr(33);
   MD5Buffer((const unsigned char *)theGraph.data(),theGraph.length(),md5_sig);
-  MD5SigToString(md5_sig,sigStr.data(),33);
+  MD5SigToString(md5_sig,sigStr.rawData(),33);
   bool regenerate=FALSE;
   if (checkAndUpdateMd5Signature(absBaseName,sigStr) ||
       !checkDeliverables(graphFormat==GOF_BITMAP ? absImgName :
@@ -3979,7 +3979,6 @@ QCString DotDirDeps::writeGraph(FTextStream &out,
     if (graphFormat==GOF_BITMAP)
     {
       // run dot to create a bitmap image
-      QCString dotArgs(maxCmdLine);
       DotRunner *dotRun = new DotRunner(absDotName,d.absPath().data(),TRUE,absImgName);
       dotRun->addJob(imgExt,absImgName);
       if (generateImageMap) dotRun->addJob(MAP_CMD,absMapName);
@@ -4103,7 +4102,7 @@ void generateGraphLegend(const char *path)
   uchar md5_sig[16];
   QCString sigStr(33);
   MD5Buffer((const unsigned char *)theGraph.data(),theGraph.length(),md5_sig);
-  MD5SigToString(md5_sig,sigStr.data(),33);
+  MD5SigToString(md5_sig,sigStr.rawData(),33);
   QCString absBaseName = (QCString)path+"/graph_legend";
   QCString absDotName  = absBaseName+".dot";
   QCString imgExt      = Config_getEnum("DOT_IMAGE_FORMAT");
@@ -4503,11 +4502,10 @@ QCString DotGroupCollaboration::writeGraph( FTextStream &t,
   uchar md5_sig[16];
   QCString sigStr(33);
   MD5Buffer((const unsigned char *)theGraph.data(),theGraph.length(),md5_sig);
-  MD5SigToString(md5_sig,sigStr.data(),33);
+  MD5SigToString(md5_sig,sigStr.rawData(),33);
   QCString imgExt      = Config_getEnum("DOT_IMAGE_FORMAT");
   QCString baseName    = m_diskName;
   QCString imgName     = baseName+"."+imgExt;
-  QCString mapName     = baseName+".map";
   QCString absPath     = d.absPath().data();
   QCString absBaseName = absPath+"/"+baseName;
   QCString absDotName  = absBaseName+".dot";
@@ -4534,8 +4532,6 @@ QCString DotGroupCollaboration::writeGraph( FTextStream &t,
 
     if (graphFormat==GOF_BITMAP) // run dot to create a bitmap image
     {
-      QCString dotArgs(maxCmdLine);
-
       DotRunner *dotRun = new DotRunner(absDotName,d.absPath().data(),FALSE);
       dotRun->addJob(imgExt,absImgName);
       if (writeImageMap) dotRun->addJob(MAP_CMD,absMapName);

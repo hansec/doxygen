@@ -1976,10 +1976,21 @@ class ExpressionParser
     ExprAst *parseLiteral()
     {
       TRACE(("{parseLiteral(%s)\n",m_curToken.id.data()));
-      ExprAst *lit = new ExprAstLiteral(m_curToken.id);
+      ExprAst *expr = new ExprAstLiteral(m_curToken.id);
       getNextToken();
+      if (expr)
+      {
+        while (m_curToken.type==ExprToken::Operator &&
+               m_curToken.op==Operator::Filter)
+        {
+          getNextToken();
+          ExprAstFilter *filter = parseFilter();
+          if (!filter) break;
+          expr = new ExprAstFilterAppl(expr,filter);
+        }
+      }
       TRACE(("}parseLiteral()\n"));
-      return lit;
+      return expr;
     }
 
     ExprAst *parseIdentifierOptionalArgs()
@@ -2987,7 +2998,6 @@ class TemplateNodeRange : public TemplateNodeCreator<TemplateNodeRange>
           {
             c->push();
             //int index = m_reversed ? list.count() : 0;
-            TemplateVariant v;
             const TemplateVariant *parentLoop = c->getRef("forloop");
             uint index = 0;
             int i = m_down ? e : s;
@@ -3550,6 +3560,7 @@ class TemplateNodeCreate : public TemplateNodeCreator<TemplateNodeCreate>
               {
                 outputFile.prepend(ci->outputDirectory()+"/");
               }
+              //printf("NoteCreate(%s)\n",outputFile.data());
               QFile f(outputFile);
               if (f.open(IO_WriteOnly))
               {
@@ -3622,9 +3633,11 @@ class TemplateNodeTree : public TemplateNodeCreator<TemplateNodeTree>
     {
       //printf("TemplateNodeTree::renderChildren(%d)\n",ctx->list->count());
       // render all children of node to a string and return it
+      TemplateContext *c = ctx->templateCtx;
+      TemplateContextImpl* ci = dynamic_cast<TemplateContextImpl*>(c);
+      if (ci==0) return QCString(); // should not happen
       QGString result;
       FTextStream ss(&result);
-      TemplateContext *c = ctx->templateCtx;
       c->push();
       TemplateVariant node;
       TemplateListIntf::ConstIterator *it = ctx->list->createIterator();
@@ -3642,14 +3655,21 @@ class TemplateNodeTree : public TemplateNodeCreator<TemplateNodeTree>
             if (list && list->count()>0) // non-empty list
             {
               TreeContext childCtx(this,list,ctx->templateCtx);
-//              TemplateVariant children(&childCtx,renderChildrenStub);
               TemplateVariant children(TemplateVariant::Delegate::fromFunction(&childCtx,renderChildrenStub));
               children.setRaw(TRUE);
               c->set("children",children);
               m_treeNodes.render(ss,c);
               hasChildren=TRUE;
             }
+            else if (list==0)
+            {
+              ci->warn(m_templateName,m_line,"recursetree: children attribute has type '%s' instead of list\n",v.typeAsString().data());
+            }
           }
+          //else
+          //{
+          //  ci->warn(m_templateName,m_line,"recursetree: children attribute is not valid");
+          //}
         }
         if (!hasChildren)
         {
@@ -4374,7 +4394,7 @@ TemplateLexer::TemplateLexer(const TemplateEngine *engine,const QCString &fileNa
   m_engine(engine), m_fileName(fileName)
 {
   m_data.resize(size+1);
-  memcpy(m_data.data(),data,size);
+  memcpy(m_data.rawData(),data,size);
   m_data[size]=0;
 }
 
@@ -4581,7 +4601,7 @@ void TemplateLexer::addToken(QList<TemplateToken> &tokens,
   {
     int len = endPos-startPos+1;
     QCString text(len);
-    qstrncpy(text.data(),data+startPos,len);
+    qstrncpy(text.rawData(),data+startPos,len);
     if (type!=TemplateToken::Text) text = text.stripWhiteSpace();
     tokens.append(new TemplateToken(type,text,line));
   }
