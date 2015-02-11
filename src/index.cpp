@@ -3114,7 +3114,7 @@ static void writePages(PageDef *pd,FTVHelp *ftv)
 
     if (ftv)
     {
-      //printf("*** adding %s\n",pageTitle.data());
+      //printf("*** adding %s hasSubPages=%d hasSections=%d\n",pageTitle.data(),hasSubPages,hasSections);
       ftv->addContentsItem(
           hasSubPages,pageTitle,
           pd->getReference(),pd->getOutputFileBase(),
@@ -3123,7 +3123,7 @@ static void writePages(PageDef *pd,FTVHelp *ftv)
     if (addToIndex && pd!=Doxygen::mainPage)
     {
       Doxygen::indexList->addContentsItem(
-          hasSubPages,pageTitle,
+          hasSubPages || hasSections,pageTitle,
           pd->getReference(),pd->getOutputFileBase(),
           0,hasSubPages,TRUE);
     }

@@ -382,11 +382,14 @@ static bool convertMapFile(FTextStream &t,const char *mapName,
   {
     QCString buf(maxLineLen);
     int numBytes = f.readLine(buf.rawData(),maxLineLen);
-    buf[numBytes-1]='\0';
-
-    if (buf.left(5)=="<area")
+    if (numBytes>0)
     {
-      t << replaceRef(buf,relPath,urlOnly,context);
+      buf.resize(numBytes+1);
+
+      if (buf.left(5)=="<area")
+      {
+        t << replaceRef(buf,relPath,urlOnly,context);
+      }
     }
   }
   return TRUE;
@@ -810,7 +813,11 @@ void DotRunner::addPostProcessing(const char *cmd,const char *args)
 bool DotRunner::run()
 {
   int exitCode=0;
-  QCString dotExe   = Config_getString("DOT_PATH")+"dot";
+  // we need to use data here to make a copy of the string, as Config_getString can be called by
+  // multiple threads simulaneously and the reference counting is not thread safe.
+  QCString dotExe   = Config_getString("DOT_PATH").data();
+  dotExe+="dot";
+
   bool multiTargets = Config_getBool("DOT_MULTI_TARGETS");
   QCString dotArgs;
   QListIterator<QCString> li(m_jobs);
@@ -991,6 +998,7 @@ bool DotFilePatcher::run()
     {
       break;
     }
+    line.resize(numBytes+1);
 
     //printf("line=[%s]\n",line.stripWhiteSpace().data());
     int i;
