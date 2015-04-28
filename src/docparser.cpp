@@ -3,7 +3,7 @@
  * 
  *
  *
- * Copyright (C) 1997-2014 by Dimitri van Heesch.
+ * Copyright (C) 1997-2015 by Dimitri van Heesch.
  *
  * Permission to use, copy, modify, and distribute this software and its
  * documentation under the terms of the GNU General Public License is hereby 
@@ -519,8 +519,8 @@ static void checkUndocumentedParams()
         }
         else
         {
-           warn_doc_error(g_memberDef->docFile(),
-                          g_memberDef->docLine(),
+           warn_doc_error(g_memberDef->getDefFileName(),
+                          g_memberDef->getDefLine(),
                           substitute(errMsg,"%","%%"));
         }
       }
@@ -3664,7 +3664,8 @@ int DocHtmlTable::parseXml()
   DBG(("DocHtmlTable::parseXml() end\n"));
   DocNode *n=g_nodeStack.pop();
   ASSERT(n==this);
-  return retval==RetVal_EndTable ? RetVal_OK : retval;
+  tagId=Mappers::htmlTagMapper->map(g_token->name);
+  return tagId==XML_LIST && g_token->endTag ? RetVal_OK : retval;
 }
 
 /** Helper class to compute the grid for an HTML style table */
@@ -6237,9 +6238,9 @@ int DocPara::handleHtmlEndTag(const QCString &tagName)
     case XML_REMARKS:
     case XML_PARA:
     case XML_VALUE:
-    case XML_LIST:
     case XML_EXAMPLE:
     case XML_PARAM:
+    case XML_LIST:
     case XML_TYPEPARAM:
     case XML_RETURNS:
     case XML_SEE:

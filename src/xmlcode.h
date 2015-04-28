@@ -2,7 +2,7 @@
  *
  * 
  *
- * Copyright (C) 1997-2015 by Dimitri van Heesch.
+ * Copyright (C) 1997-2014 by Dimitri van Heesch.
  *
  * Permission to use, copy, modify, and distribute this software and its
  * documentation under the terms of the GNU General Public License is hereby 
@@ -15,9 +15,23 @@
  *
  */
 
-#ifndef VERSION_H
-#define VERSION_H
 
-extern char versionString[];
+#ifndef XMLCODE_H
+#define XMLCODE_H
+
+#include "types.h"
+
+class CodeOutputInterface;
+class FileDef;
+class MemberDef;
+class QCString;
+class Definition;
+
+extern void parseXmlCode(CodeOutputInterface &,const char *,const QCString &,
+             bool ,const char *,FileDef *fd,
+	     int startLine,int endLine,bool inlineFragment,
+             MemberDef *memberDef,bool showLineNumbers,Definition *searchCtx,
+             bool collectXRefs);
+extern void resetXmlCodeParserState();
 
 #endif

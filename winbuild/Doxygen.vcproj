@@ -618,10 +618,6 @@
 				>
 			</File>
 			<File
-				RelativePath="..\src\dbusxmlscanner.cpp"
-				>
-			</File>
-			<File
 				RelativePath="..\src\debug.cpp"
 				>
 			</File>
@@ -875,6 +871,10 @@
 			</File>
 			<File
 				RelativePath="$(IntDir)\pycode.cpp"
+				>
+			</File>
+			<File
+				RelativePath="$(IntDir)\xmlcode.cpp"
 				>
 			</File>
 			<File
@@ -1157,6 +1157,10 @@
 			</File>
 			<File
 				RelativePath="..\src\pycode.l"
+				>
+			</File>
+			<File
+				RelativePath="..\src\xmlcode.l"
 				>
 			</File>
 			<File
@@ -4370,7 +4374,7 @@
 				>
 			</File>
 			<File
-				RelativePath="..\src\dbusxmlscanner.h"
+				RelativePath="..\src\xmlscanner.h"
 				>
 			</File>
 			<File
@@ -4671,6 +4675,10 @@
 			</File>
 			<File
 				RelativePath="..\src\pycode.h"
+				>
+			</File>
+			<File
+				RelativePath="..\src\xmlcode.h"
 				>
 			</File>
 			<File

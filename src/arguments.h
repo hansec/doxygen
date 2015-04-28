@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Copyright (C) 1997-2014 by Dimitri van Heesch.
+ * Copyright (C) 1997-2015 by Dimitri van Heesch.
  *
  * Permission to use, copy, modify, and distribute this software and its
  * documentation under the terms of the GNU General Public License is hereby 
@@ -70,7 +70,7 @@ struct Argument
   QCString array;    /*!< Argument's array specifier (may be empty) */
   QCString defval;   /*!< Argument's default value (may be empty) */
   QCString docs;     /*!< Argument's documentation (may be empty) */
-  QCString typeConstraint;  /*!< Used for Java generics: <T extends C> */
+  QCString typeConstraint;  /*!< Used for Java generics: \<T extends C\> */
 };
 
 /*! \brief This class represents an function or template argument list. 

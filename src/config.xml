@@ -6,7 +6,7 @@
  *
  * 
  *
- * Copyright (C) 1997-2014 by Dimitri van Heesch.
+ * Copyright (C) 1997-2015 by Dimitri van Heesch.
  *
  * Permission to use, copy, modify, and distribute this software and its
  * documentation under the terms of the GNU General Public License is hereby 
@@ -1889,13 +1889,13 @@ hr.footer {
 ]]>
       </docs>
     </option>
-    <option type='bool' id='HTML_TIMESTAMP' defval='1' depends='GENERATE_HTML'>
+    <option type='bool' id='HTML_TIMESTAMP' defval='0' depends='GENERATE_HTML'>
       <docs>
 <![CDATA[
  If the \c HTML_TIMESTAMP tag is set to \c YES then the footer of 
  each generated HTML page will contain the date and time when the page 
- was generated. Setting this to \c NO can help when comparing the output of 
- multiple runs.
+ was generated. Setting this to \c YES can help to show when doxygen was last run 
+ and thus if the documentation is up to date.
 ]]>
       </docs>
     </option>
@@ -2492,10 +2492,19 @@ EXTRA_SEARCH_MAPPINGS = tagname1=loc1 tagname2=loc2 ...
       <docs>
 <![CDATA[
  The \c EXTRA_PACKAGES tag can be used to specify one or more \f$\mbox{\LaTeX}\f$ 
- package names that should be included in the \f$\mbox{\LaTeX}\f$ output.
- To get the times font for instance you can specify 
+ package names that should be included in the \f$\mbox{\LaTeX}\f$ output. The package
+ can be specified just by its name or with the correct syntax as to be used with the
+ \f$\mbox{\LaTeX}\f$ `\usepackage` command.
+
+ To get the `times` font for instance you can specify :
 \verbatim
-EXTRA_PACKAGES=times
+  EXTRA_PACKAGES=times
+or 
+  EXTRA_PACKAGES={times}
+\endverbatim
+ To use the option `intlimits` with the `amsmath` package you can specify:
+\verbatim
+   EXTRA_PACKAGES=[intlimits]{amsmath}
 \endverbatim
  If left blank no extra packages will be included.
 ]]>
