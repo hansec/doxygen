@@ -15,8 +15,6 @@
  */
 
 #include <stdlib.h>
-#include <unistd.h>
-
 #include <qfile.h>
 #include <qfileinfo.h>
 #include <qtextstream.h>
@@ -134,6 +132,7 @@ void FormulaList::generateBitmaps(const char *path)
       {
         err("Problems running dvips. Check your installation!\n");
         portable_sysTimerStop();
+        QDir::setCurrent(oldDir);
         return;
       }
       portable_sysTimerStop();
@@ -194,6 +193,7 @@ void FormulaList::generateBitmaps(const char *path)
       {
         err("Problem running ghostscript %s %s. Check your installation!\n",portable_ghostScriptCommand(),gsArgs);
         portable_sysTimerStop();
+        QDir::setCurrent(oldDir);
         return;
       }
       portable_sysTimerStop();

@@ -39,7 +39,7 @@
  *        type, and the matchArgumentList in util.cpp is be used to
  *        further determine the correct separation.
  */
-
+%option never-interactive
 %{
 
 /*
@@ -57,8 +57,8 @@
 #include "arguments.h"
 #include "message.h"
   
-#define YY_NEVER_INTERACTIVE 1
 #define YY_NO_INPUT 1
+#define YY_NO_UNISTD_H 1
   
 /* -----------------------------------------------------------------
  *	state variables
@@ -370,10 +370,10 @@ RAWEND    ")"[^ \t\(\)\\]{0,16}\"
 						if      (a->type.left(6)=="const ")    sv=6;
 						else if (a->type.left(9)=="volatile ") sv=9;
 
-						if (a->type.mid(sv,6)=="struct"    ||
-						    a->type.mid(sv,5)=="union"     ||
-						    a->type.mid(sv,5)=="class"     ||
-						    a->type.mid(sv,8)=="typename"  ||
+						if (a->type.mid(sv)=="struct"    ||
+						    a->type.mid(sv)=="union"     ||
+						    a->type.mid(sv)=="class"     ||
+						    a->type.mid(sv)=="typename"  ||
 						    a->type=="const"               ||
 						    a->type=="volatile"
 						   )

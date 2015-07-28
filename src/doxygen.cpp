@@ -25,7 +25,6 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <qtextcodec.h>
-#include <unistd.h>
 #include <errno.h>
 #include <qptrdict.h>
 #include <qtextstream.h>
@@ -1745,6 +1744,13 @@ static void buildNamespaceList(EntryNav *rootNav)
         if (nd->getLanguage()==SrcLangExt_Unknown)
         {
           nd->setLanguage(root->lang);
+        }
+        if (rootNav->tagInfo()==0) // if we found the namespace in a tag file
+                                   // and also in a project file, then remove
+                                   // the tag file reference
+        {
+          nd->setReference("");
+          nd->setFileName(fullName);
         }
 
         // file definition containing the namespace nd
@@ -10857,7 +10863,7 @@ void searchInputFiles()
    *             Determine Input Files                                      *
    **************************************************************************/
 
-  g_s.begin("Searching for files to process...\n");
+  g_s.begin("Searching INPUT for files to process...\n");
   QDict<void> *killDict = new QDict<void>(10007);
   QStrList &inputList=Config_getList("INPUT");
   g_inputFiles.setAutoDelete(TRUE);
@@ -11433,21 +11439,11 @@ void generateOutput()
     if (generateDocSet)      Doxygen::indexList->addIndex(new DocSets);
     Doxygen::indexList->initialize();
     HtmlGenerator::writeTabData();
-
-    // copy static stuff
-    copyStyleSheet();
-    copyLogo();
-    copyExtraFiles("HTML_EXTRA_FILES","HTML_OUTPUT");
-    FTVHelp::generateTreeViewImages();
   }
   if (generateLatex) 
   {
     g_outputList->add(new LatexGenerator);
     LatexGenerator::init();
-
-    copyLatexStyleSheet();
-    // copy static stuff
-    copyExtraFiles("LATEX_EXTRA_FILES","LATEX_OUTPUT");
   }
   if (generateMan)
   {
@@ -11667,6 +11663,20 @@ void generateOutput()
     g_s.begin("Running dot...\n");
     DotManager::instance()->run();
     g_s.end();
+  }
+
+  // copy static stuff
+  if (generateHtml)  
+  {
+    FTVHelp::generateTreeViewImages();
+    copyStyleSheet();
+    copyLogo();
+    copyExtraFiles("HTML_EXTRA_FILES","HTML_OUTPUT");
+  }
+  if (generateLatex) 
+  {
+    copyLatexStyleSheet();
+    copyExtraFiles("LATEX_EXTRA_FILES","LATEX_OUTPUT");
   }
 
   if (generateHtml &&

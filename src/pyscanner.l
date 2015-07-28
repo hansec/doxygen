@@ -21,7 +21,7 @@
  *  taught by Peter H. Froehlich <phf@acm.org>.
  */
 
-
+%option never-interactive
 %{
 
 /*
@@ -35,7 +35,6 @@
 #include <qarray.h>
 #include <qstack.h>
 #include <qregexp.h>
-#include <unistd.h>
 #include <qfile.h>
 #include <qfileinfo.h>
   
@@ -55,8 +54,8 @@
 //#define DBG_CTX(x) fprintf x
 #define DBG_CTX(x) do { } while(0)
 
-#define YY_NEVER_INTERACTIVE 1
 #define YY_NO_INPUT 1
+#define YY_NO_UNISTD_H 1
 
 /* -----------------------------------------------------------------
  *
@@ -964,7 +963,9 @@ STARTDOCSYMS      "##"
 			    {
 			      current->argList->getLast()->defval=g_defVal.stripWhiteSpace();
 			    }
-       			    BEGIN(FunctionParams);
+			    if (*yytext == ')')
+			      current->args = argListToString(current->argList);
+			    BEGIN(FunctionParams);
 			  }
 			  else // continue
 			  {
@@ -1278,6 +1279,12 @@ STARTDOCSYMS      "##"
 			current->program+=yytext;
 			initTriSingleQuoteBlock();
 			BEGIN(TripleComment);
+                      }
+   "'"	              {
+       			g_stringContext=YY_START;
+			current->initializer+="'";
+			g_copyString=&current->initializer;
+                        BEGIN( SingleQuoteString );
                       }
    "\""	              {
        			g_stringContext=YY_START;

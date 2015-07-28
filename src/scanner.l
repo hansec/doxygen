@@ -14,7 +14,7 @@
  * input used in their production; they are not affected by this license.
  *
  */
-  
+%option never-interactive
 %{
 
 /*
@@ -28,7 +28,6 @@
 #include <qarray.h>
 #include <qstack.h>
 #include <qregexp.h>
-#include <unistd.h>
 #include <qfile.h>
   
 #include "scanner.h"
@@ -45,8 +44,8 @@
 
 #include "clangparser.h"
 
-#define YY_NEVER_INTERACTIVE 1
 #define YY_NO_INPUT 1
+#define YY_NO_UNISTD_H 1
 
 /* -----------------------------------------------------------------
  *
@@ -4663,6 +4662,7 @@ OPERATOR  "operator"{B}*({ARITHOP}|{ASSIGNOP}|{LOGICOP}|{BITOP})
                                           lineCount();
                                           current->args += " = delete";
 					  current->spec |= Entry::Delete;
+					  current->argList->isDeleted=TRUE;
                                           BEGIN(FuncQual);
                                         }
 <FuncQual,TrailingReturn>{BN}*"="{BN}*"default"{BN}*     { // C++11 explicitly defaulted constructor/assignment operator
@@ -5634,7 +5634,13 @@ OPERATOR  "operator"{B}*({ARITHOP}|{ASSIGNOP}|{LOGICOP}|{BITOP})
 					  BEGIN( ClassVar );
 					}
 <ClassVar>":"				{ 
-					  if (current->section==Entry::ENUM_SEC) // enum E:2, see bug 313527, 
+                                          if (current->section==Entry::VARIABLE_SEC) // enum A B:2, see bug 748208
+                                          {
+                                            current->bitfields+=":";
+                                            current->args.resize(0);
+                                            BEGIN(BitFields);
+                                          }
+                                          else if (current->section==Entry::ENUM_SEC) // enum E:2, see bug 313527, 
                                                                                  // or C++11 style enum: 'E : unsigned int {...}'
 					  {
 					    current->args.resize(0);
@@ -6742,7 +6748,8 @@ static void parseCompounds(Entry *rt)
       initEntry();
 
       // deep copy group list from parent (see bug 727732)
-      if (rt->groups)
+      static bool autoGroupNested = Config_getBool("GROUP_NESTED_COMPOUNDS");
+      if (autoGroupNested && rt->groups && ce->section!=Entry::ENUM_SEC && !(ce->spec&Entry::Enum))
       {
         QListIterator<Grouping> gli(*rt->groups);
         Grouping *g;

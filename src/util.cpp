@@ -18,6 +18,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <math.h>
+#include <limits.h>
 
 #include "md5.h"
 
@@ -2472,6 +2473,35 @@ QCString fileToString(const char *name,bool filter,bool isSourceCode)
 QCString dateToString(bool includeTime)
 {
   QDateTime current = QDateTime::currentDateTime();
+  QCString sourceDateEpoch = portable_getenv("SOURCE_DATE_EPOCH");
+  if (!sourceDateEpoch.isEmpty())
+  {
+    bool ok;
+    uint64 epoch = sourceDateEpoch.toUInt64(&ok);
+    if (!ok)
+    {
+      static bool warnedOnce=FALSE;
+      if (!warnedOnce)
+      {
+        warn_uncond("Environment variable SOURCE_DATE_EPOCH does not contain a valid number; value is '%s'\n",
+            sourceDateEpoch.data());
+        warnedOnce=TRUE;
+      }
+    }
+    else if (epoch>UINT_MAX)
+    {
+      static bool warnedOnce=FALSE;
+      if (!warnedOnce)
+      {
+        warn_uncond("Environment variable SOURCE_DATA_EPOCH must have a value smaller than or equal to %llu; actual value %llu\n",UINT_MAX,epoch);
+        warnedOnce=TRUE;
+      }
+    }
+    else // all ok, replace current time with epoch value
+    {
+      current.setTime_t((ulong)epoch); // TODO: add support for 64bit epoch value
+    }
+  }
   return theTranslator->trDateTime(current.date().year(),
                                    current.date().month(),
                                    current.date().day(),
@@ -5240,6 +5270,7 @@ QCString escapeCharsInString(const char *name,bool allowDots,bool allowUnderscor
       case '=': growBuf.addStr("_0A"); break;
       case '$': growBuf.addStr("_0B"); break;
       case '\\': growBuf.addStr("_0C"); break;
+      case '@': growBuf.addStr("_0D"); break;
       default: 
                 if (c<0)
                 {
@@ -6460,7 +6491,6 @@ void filterLatexString(FTextStream &t,const char *str,
     bool insideTabbing,bool insidePre,bool insideItem)
 {
   if (str==0) return;
-  //printf("filterLatexString(%s)\n",str);
   //if (strlen(str)<2) stackTrace();
   const unsigned char *p=(const unsigned char *)str;
   const unsigned char *q;
@@ -6554,7 +6584,7 @@ void filterLatexString(FTextStream &t,const char *str,
         default:   
                    //if (!insideTabbing && forceBreaks && c!=' ' && *p!=' ')
                    if (!insideTabbing && 
-                       ((c>='A' && c<='Z' && pc!=' ' && pc!='\0') || (c==':' && pc!=':') || (pc=='.' && isId(c)))
+                       ((c>='A' && c<='Z' && pc!=' ' && pc!='\0' && *p) || (c==':' && pc!=':') || (pc=='.' && isId(c)))
                       )
                    {
                      t << "\\+";
