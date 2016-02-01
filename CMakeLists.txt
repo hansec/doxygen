@@ -41,12 +41,15 @@ endif()
 
 if (${CMAKE_SYSTEM} MATCHES "Darwin")
     set(CMAKE_CXX_FLAGS "-Wno-deprecated-register -mmacosx-version-min=10.5 ${CMAKE_CXX_FLAGS}")
+    set(CMAKE_C_FLAGS "-Wno-deprecated-register -mmacosx-version-min=10.5 ${CMAKE_C_FLAGS}")
     find_library(CORESERVICES_LIB CoreServices)
     set(EXTRA_LIBS ${CORESERVICES_LIB})
 endif()
 
 if (WIN32)
-    set(ICONV_DIR "${CMAKE_SOURCE_DIR}/winbuild")
+    if(NOT ICONV_DIR)
+      set(ICONV_DIR "${CMAKE_SOURCE_DIR}/winbuild")
+    endif()
     set(CMAKE_REQUIRED_DEFINITIONS "-DLIBICONV_STATIC")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj") # needed for language.cpp on 64bit
     add_definitions(-DLIBICONV_STATIC -D_CRT_SECURE_NO_WARNINGS)

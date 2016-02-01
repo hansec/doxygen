@@ -250,8 +250,8 @@ void writePageRef(OutputDocInterface &od,const char *cn,const char *mn)
   
   od.disable(OutputGenerator::Html);
   od.disable(OutputGenerator::Man);
-  if (Config_getBool("PDF_HYPERLINKS")) od.disable(OutputGenerator::Latex);
-  if (Config_getBool("RTF_HYPERLINKS")) od.disable(OutputGenerator::RTF);
+  if (Config_getBool(PDF_HYPERLINKS)) od.disable(OutputGenerator::Latex);
+  if (Config_getBool(RTF_HYPERLINKS)) od.disable(OutputGenerator::RTF);
   od.startPageRef();
   od.docify(theTranslator->trPageAbbreviation());
   od.endPageRef(cn,mn);
@@ -293,19 +293,19 @@ static QCString stripFromPath(const QCString &path,QStrList &l)
 }
 
 /*! strip part of \a path if it matches
- *  one of the paths in the Config_getList("STRIP_FROM_PATH") list
+ *  one of the paths in the Config_getList(STRIP_FROM_PATH) list
  */
 QCString stripFromPath(const QCString &path)
 {
-  return stripFromPath(path,Config_getList("STRIP_FROM_PATH"));
+  return stripFromPath(path,Config_getList(STRIP_FROM_PATH));
 }
 
 /*! strip part of \a path if it matches
- *  one of the paths in the Config_getList("INCLUDE_PATH") list
+ *  one of the paths in the Config_getList(INCLUDE_PATH) list
  */
 QCString stripFromIncludePath(const QCString &path)
 {
-  return stripFromPath(path,Config_getList("STRIP_FROM_INC_PATH"));
+  return stripFromPath(path,Config_getList(STRIP_FROM_INC_PATH));
 }
 
 /*! try to determine if \a name is a source or a header file name by looking
@@ -1570,7 +1570,7 @@ ClassDef *getResolvedClass(Definition *scope,
     QCString *pResolvedType
     )
 {
-  static bool optimizeOutputVhdl = Config_getBool("OPTIMIZE_OUTPUT_VHDL");
+  static bool optimizeOutputVhdl = Config_getBool(OPTIMIZE_OUTPUT_VHDL);
   g_resolvedTypedefs.clear();
   if (scope==0 ||
       (scope->definitionType()!=Definition::TypeClass && 
@@ -1654,8 +1654,8 @@ static const char virtualScope[] = { 'v', 'i', 'r', 't', 'u', 'a', 'l', ':' };
 // Note: this function is not reentrant due to the use of static buffer!
 QCString removeRedundantWhiteSpace(const QCString &s)
 {
-  static bool cliSupport = Config_getBool("CPP_CLI_SUPPORT");
-  static bool vhdl = Config_getBool("OPTIMIZE_OUTPUT_VHDL");
+  static bool cliSupport = Config_getBool(CPP_CLI_SUPPORT);
+  static bool vhdl = Config_getBool(OPTIMIZE_OUTPUT_VHDL);
    
   if (s.isEmpty() || vhdl) return s;
   static GrowBuf growBuf;
@@ -2347,8 +2347,8 @@ QCString getFileFilter(const char* name,bool isSourceCode)
   // sanity check
   if (name==0) return "";
 
-  QStrList& filterSrcList = Config_getList("FILTER_SOURCE_PATTERNS");
-  QStrList& filterList    = Config_getList("FILTER_PATTERNS");
+  QStrList& filterSrcList = Config_getList(FILTER_SOURCE_PATTERNS);
+  QStrList& filterList    = Config_getList(FILTER_PATTERNS);
 
   QCString filterName;
   bool found=FALSE;
@@ -2362,7 +2362,7 @@ QCString getFileFilter(const char* name,bool isSourceCode)
   }
   if (!found)
   { // then use the generic input filter
-    return Config_getString("INPUT_FILTER");
+    return Config_getString(INPUT_FILTER);
   }
   else
   {
@@ -2374,7 +2374,7 @@ QCString getFileFilter(const char* name,bool isSourceCode)
 QCString transcodeCharacterStringToUTF8(const QCString &input)
 {
   bool error=FALSE;
-  static QCString inputEncoding = Config_getString("INPUT_ENCODING");
+  static QCString inputEncoding = Config_getString(INPUT_ENCODING);
   const char *outputEncoding = "UTF-8";
   if (inputEncoding.isEmpty() || qstricmp(inputEncoding,outputEncoding)==0) return input;
   int inputSize=input.length();
@@ -4005,6 +4005,11 @@ bool getDefs(const QCString &scName,
 
       MemberDef *tmd=0;
       ClassDef *fcd=getResolvedClass(Doxygen::globalScope,0,className,&tmd);
+      if (fcd==0 && className.find('<')!=-1) // try without template specifiers as well
+      {
+         QCString nameWithoutTemplates = stripTemplateSpecifiersFromScope(className,FALSE);
+         fcd=getResolvedClass(Doxygen::globalScope,0,nameWithoutTemplates,&tmd);
+      }
       //printf("Trying class scope %s: fcd=%p tmd=%p\n",className.data(),fcd,tmd);
       // todo: fill in correct fileScope!
       if (fcd &&  // is it a documented class
@@ -4288,10 +4293,9 @@ bool getDefs(const QCString &scName,
       else
       {
         //printf("not a namespace\n");
-        bool found=FALSE;
         MemberListIterator mmli(*mn);
         MemberDef *mmd;
-        for (mmli.toFirst();((mmd=mmli.current()) && !found);++mmli)
+        for (mmli.toFirst();(mmd=mmli.current());++mmli)
         {
           MemberDef *tmd = mmd->getEnumScope();
           //printf("try member %s tmd=%s\n",mmd->name().data(),tmd?tmd->name().data():"<none>");
@@ -4653,7 +4657,7 @@ bool resolveRef(/* in */  const char *scName,
 
 QCString linkToText(SrcLangExt lang,const char *link,bool isFileName)
 {
-  //static bool optimizeOutputJava = Config_getBool("OPTIMIZE_OUTPUT_JAVA");
+  //static bool optimizeOutputJava = Config_getBool(OPTIMIZE_OUTPUT_JAVA);
   QCString result=link;
   if (!result.isEmpty())
   {
@@ -4756,7 +4760,7 @@ bool resolveLink(/* in */ const char *scName,
 
   QCString linkRef=lr;
   QCString linkRefWithoutTemplates = stripTemplateSpecifiersFromScope(linkRef,FALSE);
-  //printf("ResolveLink linkRef=%s inSee=%d\n",lr,inSeeBlock);
+  //printf("ResolveLink linkRef=%s\n",lr);
   FileDef  *fd;
   GroupDef *gd;
   PageDef  *pd;
@@ -5126,20 +5130,20 @@ QCString substituteKeywords(const QCString &s,const char *title,
   result = substitute(result,"$projectname",projName);
   result = substitute(result,"$projectnumber",projNum);
   result = substitute(result,"$projectbrief",projBrief);
-  result = substitute(result,"$projectlogo",stripPath(Config_getString("PROJECT_LOGO")));
+  result = substitute(result,"$projectlogo",stripPath(Config_getString(PROJECT_LOGO)));
   return result;
 }
 
 //----------------------------------------------------------------------
 
 /*! Returns the character index within \a name of the first prefix
- *  in Config_getList("IGNORE_PREFIX") that matches \a name at the left hand side,
+ *  in Config_getList(IGNORE_PREFIX) that matches \a name at the left hand side,
  *  or zero if no match was found
  */ 
 int getPrefixIndex(const QCString &name)
 {
   if (name.isEmpty()) return 0;
-  static QStrList &sl = Config_getList("IGNORE_PREFIX");
+  static QStrList &sl = Config_getList(IGNORE_PREFIX);
   char *s = sl.first();
   while (s)
   {
@@ -5236,8 +5240,8 @@ bool hasVisibleRoot(BaseClassList *bcl)
 // note that this function is not reentrant due to the use of static growBuf!
 QCString escapeCharsInString(const char *name,bool allowDots,bool allowUnderscore)
 {
-  static bool caseSenseNames = Config_getBool("CASE_SENSE_NAMES");
-  static bool allowUnicodeNames = Config_getBool("ALLOW_UNICODE_NAMES");
+  static bool caseSenseNames = Config_getBool(CASE_SENSE_NAMES);
+  static bool allowUnicodeNames = Config_getBool(ALLOW_UNICODE_NAMES);
   static GrowBuf growBuf;
   growBuf.clear();
   char c;
@@ -5348,8 +5352,8 @@ QCString escapeCharsInString(const char *name,bool allowDots,bool allowUnderscor
  */
 QCString convertNameToFile(const char *name,bool allowDots,bool allowUnderscore)
 {
-  static bool shortNames = Config_getBool("SHORT_NAMES");
-  static bool createSubdirs = Config_getBool("CREATE_SUBDIRS");
+  static bool shortNames = Config_getBool(SHORT_NAMES);
+  static bool createSubdirs = Config_getBool(CREATE_SUBDIRS);
   QCString result;
   if (shortNames) // use short names only
   {
@@ -5431,7 +5435,7 @@ QCString convertNameToFile(const char *name,bool allowDots,bool allowUnderscore)
 QCString relativePathToRoot(const char *name)
 {
   QCString result;
-  if (Config_getBool("CREATE_SUBDIRS"))
+  if (Config_getBool(CREATE_SUBDIRS))
   {
     if (name==0)
     {
@@ -5452,7 +5456,7 @@ QCString relativePathToRoot(const char *name)
 
 void createSubDirs(QDir &d)
 {
-  if (Config_getBool("CREATE_SUBDIRS"))
+  if (Config_getBool(CREATE_SUBDIRS))
   {
     // create 4096 subdirectories
     int l1,l2;
@@ -5676,6 +5680,37 @@ QCString stripScope(const char *name)
   return name;
 }
 
+/*! Converts a string to a HTML id string */
+QCString convertToId(const char *s)
+{
+  static const char hex[] = "0123456789ABCDEF";
+  static GrowBuf growBuf;
+  growBuf.clear();
+  if (s==0) return "";
+  const char *p=s;
+  char c;
+  bool first=TRUE;
+  while ((c=*p++))
+  {
+    char encChar[4];
+    if ((c>='0' && c<='9') || (c>='a' && c<='z') || (c>='A' && c<='Z') || c=='-' || c==':' || c=='.')
+    { // any permissive character except _
+      if (first && c>='0' && c<='9') growBuf.addChar('a'); // don't start with a digit
+      growBuf.addChar(c);
+    }
+    else
+    {
+      encChar[0]='_';
+      encChar[1]=hex[((unsigned char)c)>>4];
+      encChar[2]=hex[((unsigned char)c)&0xF];
+      encChar[3]=0;
+      growBuf.addStr(encChar);
+    }
+    first=FALSE;
+  }
+  growBuf.addChar(0);
+  return growBuf.get();
+}
 
 /*! Converts a string to an XML-encoded string */
 QCString convertToXML(const char *s)
@@ -5773,6 +5808,15 @@ QCString convertToJSString(const char *s)
   return convertCharEntitiesToUTF8(growBuf.get());
 }
 
+QCString convertToLaTeX(const QCString &s,bool insideTabbing,bool keepSpaces)
+{
+  QGString result;
+  FTextStream t(&result);
+  filterLatexString(t,s,insideTabbing,FALSE,FALSE,keepSpaces);
+  return result.data();
+}
+
+
 
 QCString convertCharEntitiesToUTF8(const QCString &s)
 {
@@ -5861,7 +5905,8 @@ void addMembersToMemberGroup(MemberList *ml,
                     groupId,
                     info->header,
                     info->doc,
-                    info->docFile
+                    info->docFile,
+                    info->docLine
                     );
                 (*ppMemberGroupSDict)->append(groupId,mg);
               }
@@ -5893,7 +5938,8 @@ void addMembersToMemberGroup(MemberList *ml,
               groupId,
               info->header,
               info->doc,
-              info->docFile
+              info->docFile,
+              info->docLine
               );
           (*ppMemberGroupSDict)->append(groupId,mg);
         }
@@ -6354,11 +6400,7 @@ PageDef *addRelatedPage(const char *name,const QCString &ptitle,
     if (tagInfo)
     {
       pd->setReference(tagInfo->tagName);
-      pd->setFileName(tagInfo->fileName,TRUE);
-    }
-    else
-    {
-      pd->setFileName(convertNameToFile(pd->name(),FALSE,TRUE),FALSE);
+      pd->setFileName(tagInfo->fileName);
     }
 
     //printf("Appending page `%s'\n",baseName.data());
@@ -6426,10 +6468,10 @@ void addRefItem(const QList<ListItemInfo> *sli,
           &&
           (
            // either not a built-in list or the list is enabled
-           (lii->type!="todo"       || Config_getBool("GENERATE_TODOLIST")) &&
-           (lii->type!="test"       || Config_getBool("GENERATE_TESTLIST")) &&
-           (lii->type!="bug"        || Config_getBool("GENERATE_BUGLIST"))  &&
-           (lii->type!="deprecated" || Config_getBool("GENERATE_DEPRECATEDLIST"))
+           (lii->type!="todo"       || Config_getBool(GENERATE_TODOLIST)) &&
+           (lii->type!="test"       || Config_getBool(GENERATE_TESTLIST)) &&
+           (lii->type!="bug"        || Config_getBool(GENERATE_BUGLIST))  &&
+           (lii->type!="deprecated" || Config_getBool(GENERATE_DEPRECATEDLIST))
           )
          )
       {
@@ -6488,7 +6530,7 @@ void addGroupListToTitle(OutputList &ol,Definition *d)
 }
 
 void filterLatexString(FTextStream &t,const char *str,
-    bool insideTabbing,bool insidePre,bool insideItem)
+    bool insideTabbing,bool insidePre,bool insideItem,bool keepSpaces)
 {
   if (str==0) return;
   //if (strlen(str)<2) stackTrace();
@@ -6509,8 +6551,11 @@ void filterLatexString(FTextStream &t,const char *str,
         case '{':  t << "\\{"; break;
         case '}':  t << "\\}"; break;
         case '_':  t << "\\_"; break;
-        default: 
+        case ' ':  if (keepSpaces) t << "~"; else t << ' ';
+                   break;
+        default:
                    t << (char)c;
+                   break;
       }
     }
     else
@@ -6561,13 +6606,13 @@ void filterLatexString(FTextStream &t,const char *str,
         case '>':  t << "$>$";           break;
         case '|':  t << "$\\vert$";      break;
         case '~':  t << "$\\sim$";       break;
-        case '[':  if (Config_getBool("PDF_HYPERLINKS") || insideItem) 
+        case '[':  if (Config_getBool(PDF_HYPERLINKS) || insideItem) 
                      t << "\\mbox{[}"; 
                    else
                      t << "[";
                    break;
         case ']':  if (pc=='[') t << "$\\,$";
-                     if (Config_getBool("PDF_HYPERLINKS") || insideItem)
+                     if (Config_getBool(PDF_HYPERLINKS) || insideItem)
                        t << "\\mbox{]}";
                      else
                        t << "]";             
@@ -6579,6 +6624,8 @@ void filterLatexString(FTextStream &t,const char *str,
         case '"':  t << "\\char`\\\"{}";
                    break;
         case '\'': t << "\\textquotesingle{}";
+                   break;
+        case ' ':  if (keepSpaces) { if (insideTabbing) t << "\\>"; else t << '~'; } else t << ' ';
                    break;
 
         default:   
@@ -6594,6 +6641,101 @@ void filterLatexString(FTextStream &t,const char *str,
     }
     pc = c;
   }
+}
+
+QCString latexEscapeLabelName(const char *s,bool insideTabbing)
+{
+  QGString result;
+  QCString tmp(qstrlen(s)+1);
+  FTextStream t(&result);
+  const char *p=s;
+  char c;
+  int i;
+  while ((c=*p++))
+  {
+    switch (c)
+    {
+      case '|': t << "\\texttt{\"|}"; break;
+      case '!': t << "\"!"; break;
+      case '%': t << "\\%";       break;
+      case '{': t << "\\lcurly{}"; break;
+      case '}': t << "\\rcurly{}"; break;
+      case '~': t << "````~"; break; // to get it a bit better in index together with other special characters
+      // NOTE: adding a case here, means adding it to while below as well!
+      default:  
+        i=0;
+        // collect as long string as possible, before handing it to docify
+        tmp[i++]=c;
+        while ((c=*p) && c!='|' && c!='!' && c!='%' && c!='{' && c!='}' && c!='~')
+        {
+          tmp[i++]=c;
+          p++;
+        }
+        tmp[i]=0;
+        filterLatexString(t,tmp.data(),insideTabbing);
+        break;
+    }
+  }
+  return result.data();
+}
+
+QCString latexEscapeIndexChars(const char *s,bool insideTabbing)
+{
+  QGString result;
+  QCString tmp(qstrlen(s)+1);
+  FTextStream t(&result);
+  const char *p=s;
+  char c;
+  int i;
+  while ((c=*p++))
+  {
+    switch (c)
+    {
+      case '!': t << "\"!"; break;
+      case '"': t << "\"\""; break;
+      case '@': t << "\"@"; break;
+      case '|': t << "\\texttt{\"|}"; break;
+      case '[': t << "["; break;
+      case ']': t << "]"; break;
+      case '{': t << "\\lcurly{}"; break;
+      case '}': t << "\\rcurly{}"; break;
+      // NOTE: adding a case here, means adding it to while below as well!
+      default:  
+        i=0;
+        // collect as long string as possible, before handing it to docify
+        tmp[i++]=c;
+        while ((c=*p) && c!='"' && c!='@' && c!='[' && c!=']' && c!='!' && c!='{' && c!='}' && c!='|')
+        {
+          tmp[i++]=c;
+          p++;
+        }
+        tmp[i]=0;
+        filterLatexString(t,tmp.data(),insideTabbing);
+        break;
+    }
+  }
+  return result.data();
+}
+
+QCString latexEscapePDFString(const char *s)
+{
+  QGString result;
+  FTextStream t(&result);
+  const char *p=s;
+  char c;
+  while ((c=*p++))
+  {
+    switch (c)
+    {
+      case '\\': t << "\\textbackslash{}"; break;
+      case '{':  t << "\\{"; break;
+      case '}':  t << "\\}"; break;
+      default:
+        t << c;
+        break;
+    }
+  }
+  return result.data();
 }
 
 
@@ -6769,7 +6911,7 @@ QCString stripLeadingAndTrailingEmptyLines(const QCString &s,int &docLine)
 void stringToSearchIndex(const QCString &docBaseUrl,const QCString &title,
     const QCString &str,bool priority,const QCString &anchor)
 {
-  static bool searchEngine = Config_getBool("SEARCHENGINE");
+  static bool searchEngine = Config_getBool(SEARCHENGINE);
   if (searchEngine)
   {
     Doxygen::searchIndex->setCurrentDoc(title,docBaseUrl,anchor);
@@ -6787,6 +6929,8 @@ void stringToSearchIndex(const QCString &docBaseUrl,const QCString &title,
 //--------------------------------------------------------------------------
 
 static QDict<int> g_extLookup;
+
+const QDict<int> &getExtensionLookup() { return g_extLookup; }
 
 static struct Lang2ExtMap
 {
@@ -6854,6 +6998,7 @@ bool updateLanguageMapping(const QCString &extension,const QCString &language)
 
 void initDefaultExtensionMapping()
 {
+  // NOTE: when adding an extension, also add the extension in config.xml
   g_extLookup.setAutoDelete(TRUE);
   //                  extension      parser id
   updateLanguageMapping(".dox",      "c");
@@ -6893,8 +7038,9 @@ void initDefaultExtensionMapping()
   updateLanguageMapping(".phtml",    "php");
   updateLanguageMapping(".m",        "objective-c");
   updateLanguageMapping(".M",        "objective-c");
-  updateLanguageMapping(".mm",       "objective-c");
+  updateLanguageMapping(".mm",       "c");  // see bug746361
   updateLanguageMapping(".py",       "python");
+  updateLanguageMapping(".pyw",      "python");
   updateLanguageMapping(".f",        "fortran");
   updateLanguageMapping(".for",      "fortran");
   updateLanguageMapping(".f90",      "fortran");
@@ -7597,7 +7743,7 @@ bool readInputFile(const char *fileName,BufStr &inBuf,bool filter,bool isSourceC
   {
     // do character transcoding if needed.
     transcodeCharacterBuffer(fileName,inBuf,inBuf.curPos(),
-        Config_getString("INPUT_ENCODING"),"UTF-8");
+        Config_getString(INPUT_ENCODING),"UTF-8");
   }
 
   //inBuf.addChar('\n'); /* to prevent problems under Windows ? */
@@ -7703,7 +7849,7 @@ void writeSummaryLink(OutputList &ol,const char *label,const char *title,
 
 QCString externalLinkTarget()
 {
-  static bool extLinksInWindow = Config_getBool("EXT_LINKS_IN_WINDOW");
+  static bool extLinksInWindow = Config_getBool(EXT_LINKS_IN_WINDOW);
   if (extLinksInWindow) return "target=\"_blank\" "; else return "";
 }
 
@@ -7742,9 +7888,9 @@ QCString externalRef(const QCString &relPath,const QCString &ref,bool href)
  */
 void writeColoredImgData(const char *dir,ColoredImgDataItem data[])
 {
-  static int hue   = Config_getInt("HTML_COLORSTYLE_HUE");
-  static int sat   = Config_getInt("HTML_COLORSTYLE_SAT");
-  static int gamma = Config_getInt("HTML_COLORSTYLE_GAMMA");
+  static int hue   = Config_getInt(HTML_COLORSTYLE_HUE);
+  static int sat   = Config_getInt(HTML_COLORSTYLE_SAT);
+  static int gamma = Config_getInt(HTML_COLORSTYLE_GAMMA);
   while (data->name)
   {
     QCString fileName;
@@ -7777,9 +7923,9 @@ QCString replaceColorMarkers(const char *str)
   if (s.isEmpty()) return result;
   static QRegExp re("##[0-9A-Fa-f][0-9A-Fa-f]");
   static const char hex[] = "0123456789ABCDEF";
-  static int hue   = Config_getInt("HTML_COLORSTYLE_HUE");
-  static int sat   = Config_getInt("HTML_COLORSTYLE_SAT");
-  static int gamma = Config_getInt("HTML_COLORSTYLE_GAMMA");
+  static int hue   = Config_getInt(HTML_COLORSTYLE_HUE);
+  static int sat   = Config_getInt(HTML_COLORSTYLE_SAT);
+  static int gamma = Config_getInt(HTML_COLORSTYLE_GAMMA);
   int i,l,sl=s.length(),p=0;
   while ((i=re.match(s,p,&l))!=-1)
   {
@@ -7951,8 +8097,8 @@ QCString correctURL(const QCString &url,const QCString &relPath)
 
 bool protectionLevelVisible(Protection prot)
 {
-  static bool extractPrivate = Config_getBool("EXTRACT_PRIVATE");
-  static bool extractPackage = Config_getBool("EXTRACT_PACKAGE");
+  static bool extractPrivate = Config_getBool(EXTRACT_PRIVATE);
+  static bool extractPackage = Config_getBool(EXTRACT_PACKAGE);
 
   return (prot!=Private && prot!=Package)  || 
          (prot==Private && extractPrivate) || 
@@ -7972,7 +8118,7 @@ QCString stripIndentation(const QCString &s)
   int indent=0;
   int minIndent=1000000; // "infinite"
   bool searchIndent=TRUE;
-  static int tabSize=Config_getInt("TAB_SIZE");
+  static int tabSize=Config_getInt(TAB_SIZE);
   while ((c=*p++))
   {
     if      (c=='\t') indent+=tabSize - (indent%tabSize);
@@ -8030,7 +8176,7 @@ QCString stripIndentation(const QCString &s)
 
 bool fileVisibleInIndex(FileDef *fd,bool &genSourceFile)
 {
-  static bool allExternals = Config_getBool("ALLEXTERNALS");
+  static bool allExternals = Config_getBool(ALLEXTERNALS);
   bool isDocFile = fd->isDocumentationFile();
   genSourceFile = !isDocFile && fd->generateSourceFile();
   return ( ((allExternals && fd->isLinkable()) ||
@@ -8042,8 +8188,8 @@ bool fileVisibleInIndex(FileDef *fd,bool &genSourceFile)
 
 void addDocCrossReference(MemberDef *src,MemberDef *dst)
 {
-  static bool referencedByRelation = Config_getBool("REFERENCED_BY_RELATION");
-  static bool referencesRelation   = Config_getBool("REFERENCES_RELATION");
+  static bool referencedByRelation = Config_getBool(REFERENCED_BY_RELATION);
+  static bool referencesRelation   = Config_getBool(REFERENCES_RELATION);
 
   //printf("--> addDocCrossReference src=%s,dst=%s\n",src->name().data(),dst->name().data());
   if (dst->isTypedef() || dst->isEnumerate()) return; // don't add types
@@ -8187,7 +8333,7 @@ bool namespaceHasVisibleChild(NamespaceDef *nd,bool includeClasses)
 
 bool classVisibleInIndex(ClassDef *cd)
 {
-  static bool allExternals = Config_getBool("ALLEXTERNALS");
+  static bool allExternals = Config_getBool(ALLEXTERNALS);
   return (allExternals && cd->isLinkable()) || cd->isLinkableInProject();
 }
 
@@ -8236,7 +8382,7 @@ void convertProtectionLevel(
                    int *outListType2
                   )
 {
-  static bool extractPrivate = Config_getBool("EXTRACT_PRIVATE");
+  static bool extractPrivate = Config_getBool(EXTRACT_PRIVATE);
   // default representing 1-1 mapping
   *outListType1=inListType;
   *outListType2=-1;
@@ -8353,7 +8499,7 @@ void convertProtectionLevel(
         if (extractPrivate)
         {
           *outListType1=MemberListType_pubSlots;
-          *outListType1=MemberListType_proSlots;
+          *outListType2=MemberListType_proSlots;
         }
         else
         {
@@ -8415,7 +8561,33 @@ bool mainPageHasTitle()
 
 QCString getDotImageExtension(void)
 {
-  QCString imgExt      = Config_getEnum("DOT_IMAGE_FORMAT");
+  QCString imgExt      = Config_getEnum(DOT_IMAGE_FORMAT);
   imgExt = imgExt.replace( QRegExp(":.*"), "" );
   return imgExt;
 }
+
+bool openOutputFile(const char *outFile,QFile &f)
+{
+  bool fileOpened=FALSE;
+  bool writeToStdout=(outFile[0]=='-' && outFile[1]=='\0');
+  if (writeToStdout) // write to stdout
+  {
+    fileOpened = f.open(IO_WriteOnly,stdout);
+  }
+  else // write to file
+  {
+    QFileInfo fi(outFile);
+    if (fi.exists()) // create a backup
+    {
+      QDir dir=fi.dir();
+      QFileInfo backup(fi.fileName()+".bak");
+      if (backup.exists()) // remove existing backup
+        dir.remove(backup.fileName());
+      dir.rename(fi.fileName(),fi.fileName()+".bak");
+    } 
+    f.setName(outFile);
+    fileOpened = f.open(IO_WriteOnly|IO_Translate);
+  }
+  return fileOpened;
+}
+

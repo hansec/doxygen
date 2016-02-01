@@ -11,6 +11,8 @@
 \RequirePackage[table]{xcolor}
 \RequirePackage{longtable}
 \RequirePackage{tabu}
+\RequirePackage{tabularx}
+\RequirePackage{multirow}
 
 %---------- Internal commands used in this style file ----------------
 
@@ -271,10 +273,10 @@
     \tabulinesep=1mm%
     \par%
     \ifthenelse{\equal{#1}{}}%
-      {\begin{longtabu} spread 0pt [l]{|X[-1,r]|X[-1,l]|}}% name + description
+      {\begin{longtabu} spread 0pt [l]{|X[-1,l]|X[-1,l]|}}% name + description
     {\ifthenelse{\equal{#1}{1}}%
-      {\begin{longtabu} spread 0pt [l]{|X[-1,c]|X[-1,r]|X[-1,l]|}}% in/out + name + desc
-      {\begin{longtabu} spread 0pt [l]{|X[-1,c]|X[-1,c]|X[-1,r]|X[-1,l]|}}% in/out + type + name + desc
+      {\begin{longtabu} spread 0pt [l]{|X[-1,l]|X[-1,l]|X[-1,l]|}}% in/out + name + desc
+      {\begin{longtabu} spread 0pt [l]{|X[-1,l]|X[-1,l]|X[-1,l]|X[-1,l]|}}% in/out + type + name + desc
     }
     \multicolumn{2}{l}{\hspace{-6pt}\bfseries\fontseries{bc}\selectfont\color{darkgray} #2}\\[1ex]%
     \hline%
@@ -407,10 +409,10 @@
 % Used by parameter lists and simple sections
 \newenvironment{Desc}
 {\begin{list}{}{%
-    \settowidth{\labelwidth}{40pt}%
-    \setlength{\leftmargin}{\labelwidth}%
+    \settowidth{\labelwidth}{20pt}%
     \setlength{\parsep}{0pt}%
-    \setlength{\itemsep}{-4pt}%
+    \setlength{\itemsep}{0pt}%
+    \setlength{\leftmargin}{\labelwidth+\labelsep}%
     \renewcommand{\makelabel}{\entrylabel}%
   }
 }{%
@@ -421,7 +423,7 @@
 \newcommand{\PBS}[1]{\let\temp=\\#1\let\\=\temp}%
 \newenvironment{TabularC}[1]%
 {\tabulinesep=1mm
-\begin{longtabu} spread 0pt [l]{*#1{|X[-1]}|}}%
+\begin{longtabu} spread 0pt [c]{*#1{|X[-1]}|}}%
 {\end{longtabu}\par}%
 
 \newenvironment{TabularNC}[1]%
@@ -444,6 +446,16 @@
   \textbf{#1} (\textnormal{#2}\,\pageref{#3})%
 }
 
+% Used to link to a table when hyperlinks are turned on
+\newcommand{\doxytablelink}[2]{%
+  \ref{#1}%
+}
+
+% Used to link to a table when hyperlinks are turned off
+\newcommand{\doxytableref}[3]{%
+  \ref{#3}%
+}
+
 % Used by @addindex
 \newcommand{\lcurly}{\{}
 \newcommand{\rcurly}{\}}
@@ -463,3 +475,10 @@
 
 % Color used for table heading
 \newcommand{\tableheadbgcolor}{lightgray}%
+
+% Define caption that is also suitable in a table
+\makeatletter
+\def\doxyfigcaption{%
+\refstepcounter{figure}%
+\@dblarg{\@caption{figure}}}
+\makeatother
